@@ -11,6 +11,8 @@
   label { display: block; margin-top: 16px; font-size: 13px; font-weight: bold; color: #444; }
   select, button { width: 100%; padding: 10px; margin-top: 6px; font-size: 15px; box-sizing: border-box; }
   select { border: 1px solid #ccc; border-radius: 4px; }
+  .tahun-row { display: flex; gap: 10px; }
+  .tahun-row > div { flex: 1; }
   button { background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px; }
   button:disabled { background: #aaa; cursor: not-allowed; }
   #status { margin-top: 12px; font-size: 13px; color: #555; min-height: 18px; }
@@ -18,23 +20,28 @@
 </head>
 <body>
   <h1>Populasi Data Penjualan</h1>
-  <p class="sub">Pilih produk dan tahun, lalu download hasilnya.</p>
-
+  <p class="sub">Pilih produk dan rentang tahun, lalu download hasilnya.</p>
   <label for="selProduk">Produk (SKU)</label>
   <select id="selProduk"><option>Memuat...</option></select>
 
-  <label for="selTahun">Tahun</label>
-  <select id="selTahun" disabled><option>Pilih produk dulu</option></select>
+  <label>Tahun</label>
+  <div class="tahun-row">
+    <div>
+      <select id="selTahunAwal" disabled><option>Pilih produk dulu</option></select>
+    </div>
+    <div>
+      <select id="selTahunAkhir" disabled><option>Pilih produk dulu</option></select>
+    </div>
+  </div>
 
   <button id="btnDownload" disabled>Download</button>
   <div id="status"></div>
-
 <script>
   // GANTI dengan URL Web App hasil Deploy Apps Script Anda
   const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwmtPmu8XvQ1q4twwxTBT__HLxUqkapmeIl2emVlvMPc5_AggnoFtvFCFcnGbgiNXob/exec';
-
   const selProduk = document.getElementById('selProduk');
-  const selTahun = document.getElementById('selTahun');
+  const selTahunAwal = document.getElementById('selTahunAwal');
+  const selTahunAkhir = document.getElementById('selTahunAkhir');
   const btnDownload = document.getElementById('btnDownload');
   const statusEl = document.getElementById('status');
 
@@ -55,18 +62,27 @@
   }
 
   function muatTahun(sku) {
-    selTahun.disabled = true;
-    selTahun.innerHTML = '<option>Memuat...</option>';
+    selTahunAwal.disabled = true;
+    selTahunAkhir.disabled = true;
+    selTahunAwal.innerHTML = '<option>Memuat...</option>';
+    selTahunAkhir.innerHTML = '<option>Memuat...</option>';
     btnDownload.disabled = true;
     fetch(WEBAPP_URL + '?action=listTahun&sku=' + encodeURIComponent(sku))
       .then(r => r.json())
       .then(list => {
         if (!list.length) {
-          selTahun.innerHTML = '<option>Tidak ada data</option>';
+          selTahunAwal.innerHTML = '<option>Tidak ada data</option>';
+          selTahunAkhir.innerHTML = '<option>Tidak ada data</option>';
           return;
         }
-        selTahun.innerHTML = list.map(t => `<option value="${t}">${t}</option>`).join('');
-        selTahun.disabled = false;
+        const opts = list.map(t => `<option value="${t}">${t}</option>`).join('');
+        selTahunAwal.innerHTML = opts;
+        selTahunAkhir.innerHTML = opts;
+        // default: rentang penuh (awal = tahun paling lama, akhir = tahun paling baru)
+        selTahunAwal.value = list[0];
+        selTahunAkhir.value = list[list.length - 1];
+        selTahunAwal.disabled = false;
+        selTahunAkhir.disabled = false;
         btnDownload.disabled = false;
       })
       .catch(() => setStatus('Gagal memuat daftar tahun.'));
@@ -75,9 +91,17 @@
   selProduk.addEventListener('change', () => muatTahun(selProduk.value));
 
   btnDownload.addEventListener('click', () => {
+    const tahunAwal = selTahunAwal.value;
+    const tahunAkhir = selTahunAkhir.value;
+    if (parseInt(tahunAwal, 10) > parseInt(tahunAkhir, 10)) {
+      setStatus('Tahun awal tidak boleh lebih besar dari tahun akhir.');
+      return;
+    }
     btnDownload.disabled = true;
     setStatus('Menyiapkan file, mohon tunggu...');
-    fetch(WEBAPP_URL + '?action=export&sku=' + encodeURIComponent(selProduk.value) + '&tahun=' + encodeURIComponent(selTahun.value))
+    fetch(WEBAPP_URL + '?action=export&sku=' + encodeURIComponent(selProduk.value) +
+          '&tahunAwal=' + encodeURIComponent(tahunAwal) +
+          '&tahunAkhir=' + encodeURIComponent(tahunAkhir))
       .then(r => r.json())
       .then(res => {
         if (res.error) { setStatus(res.error); btnDownload.disabled = false; return; }
