@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Populasi Data Penjualan</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 480px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #666; font-size: 13px; margin-top: 0; }
+  label { display: block; margin-top: 16px; font-size: 13px; font-weight: bold; color: #444; }
+  select, button { width: 100%; padding: 10px; margin-top: 6px; font-size: 15px; box-sizing: border-box; }
+  select { border: 1px solid #ccc; border-radius: 4px; }
+  button { background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px; }
+  button:disabled { background: #aaa; cursor: not-allowed; }
+  #status { margin-top: 12px; font-size: 13px; color: #555; min-height: 18px; }
+</style>
+</head>
+<body>
+  <h1>Populasi Data Penjualan</h1>
+  <p class="sub">Pilih produk dan tahun, lalu download hasilnya.</p>
+
+  <label for="selProduk">Produk (SKU)</label>
+  <select id="selProduk"><option>Memuat...</option></select>
+
+  <label for="selTahun">Tahun</label>
+  <select id="selTahun" disabled><option>Pilih produk dulu</option></select>
+
+  <button id="btnDownload" disabled>Download</button>
+  <div id="status"></div>
+
+<script>
+  // GANTI dengan URL Web App hasil Deploy Apps Script Anda
+  const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwmtPmu8XvQ1q4twwxTBT__HLxUqkapmeIl2emVlvMPc5_AggnoFtvFCFcnGbgiNXob/exec';
+
+  const selProduk = document.getElementById('selProduk');
+  const selTahun = document.getElementById('selTahun');
+  const btnDownload = document.getElementById('btnDownload');
+  const statusEl = document.getElementById('status');
+
+  function setStatus(msg) { statusEl.textContent = msg; }
+
+  function muatProduk() {
+    fetch(WEBAPP_URL + '?action=listProduk')
+      .then(r => r.json())
+      .then(list => {
+        if (!list.length) {
+          selProduk.innerHTML = '<option>Belum ada data</option>';
+          return;
+        }
+        selProduk.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
+        muatTahun(selProduk.value);
+      })
+      .catch(() => setStatus('Gagal memuat daftar produk. Cek URL Web App.'));
+  }
+
+  function muatTahun(sku) {
+    selTahun.disabled = true;
+    selTahun.innerHTML = '<option>Memuat...</option>';
+    btnDownload.disabled = true;
+    fetch(WEBAPP_URL + '?action=listTahun&sku=' + encodeURIComponent(sku))
+      .then(r => r.json())
+      .then(list => {
+        if (!list.length) {
+          selTahun.innerHTML = '<option>Tidak ada data</option>';
+          return;
+        }
+        selTahun.innerHTML = list.map(t => `<option value="${t}">${t}</option>`).join('');
+        selTahun.disabled = false;
+        btnDownload.disabled = false;
+      })
+      .catch(() => setStatus('Gagal memuat daftar tahun.'));
+  }
+
+  selProduk.addEventListener('change', () => muatTahun(selProduk.value));
+
+  btnDownload.addEventListener('click', () => {
+    btnDownload.disabled = true;
+    setStatus('Menyiapkan file, mohon tunggu...');
+    fetch(WEBAPP_URL + '?action=export&sku=' + encodeURIComponent(selProduk.value) + '&tahun=' + encodeURIComponent(selTahun.value))
+      .then(r => r.json())
+      .then(res => {
+        if (res.error) { setStatus(res.error); btnDownload.disabled = false; return; }
+        const link = document.createElement('a');
+        link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + res.base64;
+        link.download = res.filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setStatus('File terunduh: ' + res.filename);
+        btnDownload.disabled = false;
+      })
+      .catch(() => { setStatus('Gagal export. Coba lagi.'); btnDownload.disabled = false; });
+  });
+
+  muatProduk();
+</script>
+</body>
+</html>
