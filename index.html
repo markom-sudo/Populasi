@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
 <head>
 <meta charset="UTF-8">
@@ -9,18 +9,37 @@
   h1 { font-size: 20px; margin-bottom: 4px; }
   p.sub { color: #666; font-size: 13px; margin-top: 0; }
   label { display: block; margin-top: 16px; font-size: 13px; font-weight: bold; color: #444; }
-  select, button { width: 100%; padding: 10px; margin-top: 6px; font-size: 15px; box-sizing: border-box; }
-  select { border: 1px solid #ccc; border-radius: 4px; }
+  select, button, input[type=text] { width: 100%; padding: 10px; margin-top: 6px; font-size: 15px; box-sizing: border-box; }
+  select, input[type=text] { border: 1px solid #ccc; border-radius: 4px; }
   .tahun-row { display: flex; gap: 10px; }
   .tahun-row > div { flex: 1; }
   button { background: #1a73e8; color: #fff; border: none; border-radius: 4px; cursor: pointer; margin-top: 20px; }
   button:disabled { background: #aaa; cursor: not-allowed; }
   #status { margin-top: 12px; font-size: 13px; color: #555; min-height: 18px; }
+
+  /* ---- Tab toggle Download / Lihat ---- */
+  .tab-row { display: flex; gap: 8px; margin-top: 20px; }
+  .tab-btn { flex: 1; padding: 10px; font-size: 14px; font-weight: bold; border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; color: #444; margin-top: 0; cursor: pointer; }
+  .tab-btn.active { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+
+  .pane { display: none; }
+  .pane.active { display: block; }
+
+  /* ---- Pane "Lihat" ---- */
+  #viewSummary { margin-top: 16px; font-size: 13px; background: #f5f6f9; border-radius: 6px; padding: 10px 12px; }
+  #viewSummary b { color: #1a73e8; }
+  #viewSearch { margin-top: 12px; }
+  #viewTableWrap { margin-top: 12px; max-height: 360px; overflow-y: auto; border: 1px solid #eee; border-radius: 4px; }
+  table#viewTable { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table#viewTable th, table#viewTable td { padding: 6px 8px; text-align: left; border-bottom: 1px solid #eee; }
+  table#viewTable th { background: #f5f5f5; position: sticky; top: 0; }
+  table#viewTable td.num { text-align: center; }
+  #viewEmpty { text-align: center; color: #999; font-size: 13px; padding: 24px 0; }
 </style>
 </head>
 <body>
   <h1>Populasi Data Penjualan</h1>
-  <p class="sub">Pilih produk dan rentang tahun, lalu download hasilnya.</p>
+  <p class="sub">Pilih produk dan rentang tahun, lalu download atau lihat langsung hasilnya.</p>
   <label for="selProduk">Produk (SKU)</label>
   <select id="selProduk"><option>Memuat...</option></select>
 
@@ -34,8 +53,29 @@
     </div>
   </div>
 
-  <button id="btnDownload" disabled>Download</button>
-  <div id="status"></div>
+  <div class="tab-row">
+    <button id="tabDownload" class="tab-btn active" type="button">Download</button>
+    <button id="tabLihat" class="tab-btn" type="button">Lihat</button>
+  </div>
+
+  <div id="paneDownload" class="pane active">
+    <button id="btnDownload" disabled>Download</button>
+    <div id="status"></div>
+  </div>
+
+  <div id="paneLihat" class="pane">
+    <div id="viewSummary">Pilih produk dan tahun untuk melihat ringkasan.</div>
+    <input id="viewSearch" type="text" placeholder="Cari satuan kerja / provinsi / e-purchasing...">
+    <div id="viewTableWrap">
+      <table id="viewTable">
+        <thead>
+          <tr><th>NO</th><th>E-PURCHASING</th><th>SATUAN KERJA</th><th>PROVINSI</th><th>UNIT</th></tr>
+        </thead>
+        <tbody id="viewTbody"></tbody>
+      </table>
+      <div id="viewEmpty" style="display:none;">Tidak ada baris yang cocok.</div>
+    </div>
+  </div>
 <script>
   // GANTI dengan URL Web App hasil Deploy Apps Script Anda
   const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwmtPmu8XvQ1q4twwxTBT__HLxUqkapmeIl2emVlvMPc5_AggnoFtvFCFcnGbgiNXob/exec';
@@ -44,6 +84,18 @@
   const selTahunAkhir = document.getElementById('selTahunAkhir');
   const btnDownload = document.getElementById('btnDownload');
   const statusEl = document.getElementById('status');
+
+  const tabDownload = document.getElementById('tabDownload');
+  const tabLihat = document.getElementById('tabLihat');
+  const paneDownload = document.getElementById('paneDownload');
+  const paneLihat = document.getElementById('paneLihat');
+  const viewSummary = document.getElementById('viewSummary');
+  const viewSearch = document.getElementById('viewSearch');
+  const viewTbody = document.getElementById('viewTbody');
+  const viewEmpty = document.getElementById('viewEmpty');
+
+  let activeTab = 'download';
+  let viewRowsCache = []; // hasil terakhir dari action=viewData, buat difilter search di sisi browser
 
   function setStatus(msg) { statusEl.textContent = msg; }
 
@@ -78,18 +130,95 @@
         const opts = list.map(t => `<option value="${t}">${t}</option>`).join('');
         selTahunAwal.innerHTML = opts;
         selTahunAkhir.innerHTML = opts;
-        // default: rentang penuh (awal = tahun paling lama, akhir = tahun paling baru)
         selTahunAwal.value = list[0];
         selTahunAkhir.value = list[list.length - 1];
         selTahunAwal.disabled = false;
         selTahunAkhir.disabled = false;
         btnDownload.disabled = false;
+        onSelectionChanged();
       })
       .catch(() => setStatus('Gagal memuat daftar tahun.'));
   }
 
-  selProduk.addEventListener('change', () => muatTahun(selProduk.value));
+  // Dipanggil setiap SKU/tahun berubah. Kalau tab "Lihat" sedang aktif, langsung refresh datanya.
+  function onSelectionChanged() {
+    if (activeTab === 'lihat') muatViewData();
+  }
 
+  selProduk.addEventListener('change', () => muatTahun(selProduk.value));
+  selTahunAwal.addEventListener('change', onSelectionChanged);
+  selTahunAkhir.addEventListener('change', onSelectionChanged);
+
+  /* ---------------- Tab switching ---------------- */
+  function switchTab(tab) {
+    activeTab = tab;
+    tabDownload.classList.toggle('active', tab === 'download');
+    tabLihat.classList.toggle('active', tab === 'lihat');
+    paneDownload.classList.toggle('active', tab === 'download');
+    paneLihat.classList.toggle('active', tab === 'lihat');
+    if (tab === 'lihat') muatViewData();
+  }
+  tabDownload.addEventListener('click', () => switchTab('download'));
+  tabLihat.addEventListener('click', () => switchTab('lihat'));
+
+  /* ---------------- Pane "Lihat" ---------------- */
+  function muatViewData() {
+    const tahunAwal = selTahunAwal.value;
+    const tahunAkhir = selTahunAkhir.value;
+    if (!selProduk.value || !tahunAwal || !tahunAkhir) return;
+
+    viewSummary.textContent = 'Memuat ringkasan...';
+    viewTbody.innerHTML = '';
+    viewEmpty.style.display = 'none';
+
+    fetch(WEBAPP_URL + '?action=viewData&sku=' + encodeURIComponent(selProduk.value) +
+          '&tahunAwal=' + encodeURIComponent(tahunAwal) +
+          '&tahunAkhir=' + encodeURIComponent(tahunAkhir))
+      .then(r => r.json())
+      .then(res => {
+        if (res.error) {
+          viewSummary.textContent = res.error;
+          viewRowsCache = [];
+          renderViewTable([]);
+          return;
+        }
+        viewRowsCache = res.rows;
+        viewSummary.innerHTML = `<b>${res.sku}</b> (${res.jenisProduk}) — Tahun ${res.rangeLabel} — Total <b>${res.totalUnit}</b> unit dari <b>${res.jumlahBaris}</b> baris`;
+        renderViewTable(filterRows(viewRowsCache, viewSearch.value));
+      })
+      .catch(() => { viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.'; });
+  }
+
+  function filterRows(rows, q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(r =>
+      String(r.eps).toLowerCase().includes(q) ||
+      String(r.satuanKerja).toLowerCase().includes(q) ||
+      String(r.provinsi).toLowerCase().includes(q)
+    );
+  }
+
+  function renderViewTable(rows) {
+    if (!rows.length) {
+      viewTbody.innerHTML = '';
+      viewEmpty.style.display = 'block';
+      return;
+    }
+    viewEmpty.style.display = 'none';
+    viewTbody.innerHTML = rows.map(r => `
+      <tr>
+        <td class="num">${r.no}</td>
+        <td>${r.eps}</td>
+        <td>${r.satuanKerja}</td>
+        <td>${r.provinsi}</td>
+        <td class="num">${r.jumlahUnit}</td>
+      </tr>`).join('');
+  }
+
+  viewSearch.addEventListener('input', () => renderViewTable(filterRows(viewRowsCache, viewSearch.value)));
+
+  /* ---------------- Pane "Download" (tidak berubah) ---------------- */
   btnDownload.addEventListener('click', () => {
     const tahunAwal = selTahunAwal.value;
     const tahunAkhir = selTahunAkhir.value;
