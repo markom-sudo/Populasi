@@ -101,7 +101,7 @@
     <div id="viewTableWrap">
       <table id="viewTable">
         <thead>
-          <tr><th class="num">NO</th><th>E-PURCHASING</th><th>SATUAN KERJA</th><th>PROVINSI</th><th class="num">UNIT</th></tr>
+          <tr><th class="num">NO</th><th>E-PURCHASING</th><th id="thProduk" style="display:none;">PRODUK</th><th>SATUAN KERJA</th><th>PROVINSI</th><th class="num">UNIT</th></tr>
         </thead>
         <tbody id="viewTbody"></tbody>
       </table>
@@ -123,6 +123,7 @@
 
   let activeTab = 'download';
   let viewRowsCache = []; // hasil terakhir action=viewData, difilter pencarian di sisi browser
+  let viewSemua = false; // true kalau produk "Semua produk" dipilih
 
   function setStatus(msg) { statusEl.textContent = msg; }
 
@@ -138,20 +139,22 @@
     if (window.parent !== window) window.parent.postMessage({ __elitechReady: 'populasi' }, '*');
   }
 
-  function muatProduk() {
-    fetch(WEBAPP_URL + '?action=listProduk')
-      .then(r => r.json())
-      .then(list => {
-        if (!Array.isArray(list) || !list.length) {
-          selProduk.innerHTML = '<option>Belum ada data</option>';
-        } else {
-          selProduk.innerHTML = list.map(s => `<option value="${s}">${s}</option>`).join('');
-          muatTahun(selProduk.value);
-        }
-        notifyReady();
-      })
-      .catch(() => { setStatus('Gagal memuat daftar produk. Cek URL Web App.'); notifyReady(); });
-  }
+function muatProduk() {
+  fetch(WEBAPP_URL + '?action=listProduk')
+    .then(r => r.json())
+    .then(list => {
+      if (!Array.isArray(list) || !list.length) {
+        selProduk.innerHTML = '<option>Belum ada data</option>';
+      } else {
+        selProduk.innerHTML = '<option value="SEMUA">★ Semua produk</option>' +
+          list.map(s => `<option value="${s}">${s}</option>`).join('');
+        selProduk.value = list[0]; // default tetap produk pertama; pilih "Semua produk" secara manual
+        muatTahun(selProduk.value);
+      }
+      notifyReady();
+    })
+    .catch(() => { setStatus('Gagal memuat daftar produk. Cek URL Web App.'); notifyReady(); });
+}
 
   function muatTahun(sku) {
     selTahunAwal.disabled = true; selTahunAkhir.disabled = true;
@@ -241,61 +244,65 @@
   tabDownload.addEventListener('click', () => switchTab('download'));
   tabLihat.addEventListener('click', () => switchTab('lihat'));
 
-  /* ---------------- Pane "Lihat" ---------------- */
-  function muatViewData() {
-    const tahunAwal = selTahunAwal.value, tahunAkhir = selTahunAkhir.value;
-    if (!selProduk.value || !tahunAwal || !tahunAkhir || selTahunAwal.disabled) return;
+function muatViewData() {
+  const tahunAwal = selTahunAwal.value, tahunAkhir = selTahunAkhir.value;
+  if (!selProduk.value || !tahunAwal || !tahunAkhir || selTahunAwal.disabled) return;
 
-    viewSummary.textContent = 'Memuat ringkasan...';
+  viewSummary.textContent = 'Memuat ringkasan...';
+  viewTbody.innerHTML = '';
+  viewEmpty.style.display = 'none';
+
+  fetch(WEBAPP_URL + '?action=viewData&sku=' + encodeURIComponent(selProduk.value) +
+        '&tahunAwal=' + encodeURIComponent(tahunAwal) +
+        '&tahunAkhir=' + encodeURIComponent(tahunAkhir) + filterQS())
+    .then(r => r.json())
+    .then(res => {
+      if (res.error) {
+        viewSummary.textContent = res.error;
+        viewRowsCache = [];
+        renderViewTable([]);
+        return;
+      }
+      viewSemua = !!res.semua;
+      viewRowsCache = res.rows;
+      const produkLabel = res.semua ? '<b>Semua produk</b>' : `<b>${res.sku}</b> (${res.jenisProduk})`;
+      viewSummary.innerHTML = `${produkLabel} — Tahun ${res.rangeLabel}` +
+        `${res.wilayahLabel ? ' — <b>' + res.wilayahLabel + '</b>' : ''}` +
+        ` — Total <b>${res.totalUnit}</b> unit dari <b>${res.jumlahBaris}</b> baris`;
+      renderViewTable(filterRows(viewRowsCache, viewSearch.value));
+    })
+    .catch(() => { viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.'; });
+}
+
+function filterRows(rows, q) {
+  q = (q || '').trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(r =>
+    String(r.eps).toLowerCase().includes(q) ||
+    String(r.produk).toLowerCase().includes(q) ||
+    String(r.satuanKerja).toLowerCase().includes(q) ||
+    String(r.provinsi).toLowerCase().includes(q)
+  );
+}
+
+function renderViewTable(rows) {
+  $('thProduk').style.display = viewSemua ? '' : 'none';
+  if (!rows.length) {
     viewTbody.innerHTML = '';
-    viewEmpty.style.display = 'none';
-
-    fetch(WEBAPP_URL + '?action=viewData&sku=' + encodeURIComponent(selProduk.value) +
-          '&tahunAwal=' + encodeURIComponent(tahunAwal) +
-          '&tahunAkhir=' + encodeURIComponent(tahunAkhir) + filterQS())
-      .then(r => r.json())
-      .then(res => {
-        if (res.error) {
-          viewSummary.textContent = res.error;
-          viewRowsCache = [];
-          renderViewTable([]);
-          return;
-        }
-        viewRowsCache = res.rows;
-        viewSummary.innerHTML = `<b>${res.sku}</b> (${res.jenisProduk}) — Tahun ${res.rangeLabel}` +
-          `${res.wilayahLabel ? ' — <b>' + res.wilayahLabel + '</b>' : ''}` +
-          ` — Total <b>${res.totalUnit}</b> unit dari <b>${res.jumlahBaris}</b> baris`;
-        renderViewTable(filterRows(viewRowsCache, viewSearch.value));
-      })
-      .catch(() => { viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.'; });
+    viewEmpty.style.display = 'block';
+    return;
   }
-
-  function filterRows(rows, q) {
-    q = (q || '').trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(r =>
-      String(r.eps).toLowerCase().includes(q) ||
-      String(r.satuanKerja).toLowerCase().includes(q) ||
-      String(r.provinsi).toLowerCase().includes(q)
-    );
-  }
-
-  function renderViewTable(rows) {
-    if (!rows.length) {
-      viewTbody.innerHTML = '';
-      viewEmpty.style.display = 'block';
-      return;
-    }
-    viewEmpty.style.display = 'none';
-    viewTbody.innerHTML = rows.map(r => `
-      <tr>
-        <td class="num">${r.no}</td>
-        <td>${r.eps}</td>
-        <td>${r.satuanKerja}</td>
-        <td>${r.provinsi}</td>
-        <td class="num">${r.jumlahUnit}</td>
-      </tr>`).join('');
-  }
+  viewEmpty.style.display = 'none';
+  viewTbody.innerHTML = rows.map(r => `
+    <tr>
+      <td class="num">${r.no}</td>
+      <td>${r.eps}</td>
+      ${viewSemua ? `<td>${r.produk}</td>` : ''}
+      <td>${r.satuanKerja}</td>
+      <td>${r.provinsi}</td>
+      <td class="num">${r.jumlahUnit}</td>
+    </tr>`).join('');
+}
 
   viewSearch.addEventListener('input', () => renderViewTable(filterRows(viewRowsCache, viewSearch.value)));
 
