@@ -57,12 +57,15 @@
   #viewSummary b{color:var(--brand);font-weight:700;}
   #viewSearch{margin-top:12px;}
   #viewTableWrap{margin-top:12px;max-height:360px;overflow:auto;border:1px solid var(--border);border-radius:var(--radius);}
-  table#viewTable{width:100%;min-width:1100px;border-collapse:collapse;font-size:12.5px;}
+  table#viewTable{width:100%;min-width:1750px;border-collapse:collapse;font-size:12.5px;}
   table#viewTable th, table#viewTable td{padding:9px 10px;text-align:left;border-bottom:1px solid var(--border);}
   table#viewTable td{vertical-align:top;}
   table#viewTable tr:last-child td{border-bottom:none;}
   table#viewTable th{background:var(--surface);font-weight:600;color:var(--text-2);position:sticky;top:0;font-size:11px;}
   table#viewTable td.num, table#viewTable th.num{text-align:center;}
+  table#viewTable td.rp, table#viewTable th.rp{text-align:right;white-space:nowrap;}
+  table#viewTable td.nowrap{white-space:nowrap;}
+  table#viewTable .kosong{color:var(--text-3);}
   #viewEmpty{text-align:center;color:var(--text-3);font-size:13px;padding:32px 0;}
 </style>
 </head>
@@ -102,7 +105,23 @@
     <div id="viewTableWrap">
       <table id="viewTable">
         <thead>
-          <tr><th class="num">NO</th><th>E-PURCHASING</th><th id="thProduk" style="display:none;">PRODUK</th><th>NAMA PAKET</th><th>INSTANSI</th><th>SATUAN KERJA</th><th>PROVINSI</th><th>ALAMAT SATUAN KERJA</th><th>SUMBER DANA</th><th class="num">UNIT</th></tr>
+          <tr>
+            <th class="num">NO</th>
+            <th>E-PURCHASING</th>
+            <th id="thProduk" style="display:none;">PRODUK</th>
+            <th class="num">TAHUN</th>
+            <th class="num">BULAN</th>
+            <th>NAMA PAKET</th>
+            <th>INSTANSI</th>
+            <th>SATUAN KERJA</th>
+            <th>PROVINSI</th>
+            <th>ALAMAT SATUAN KERJA</th>
+            <th>SUMBER DANA</th>
+            <th class="num">UNIT</th>
+            <th class="rp">HARGA</th>
+            <th>CATATAN</th>
+            <th>SUMBER FILE</th>
+          </tr>
         </thead>
         <tbody id="viewTbody"></tbody>
       </table>
@@ -133,6 +152,17 @@
     return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
     });
+  }
+
+  // teks biasa; kosong -> tanda "-"
+  function teks(v) {
+    return (v == null || String(v).trim() === '') ? '<span class="kosong">-</span>' : esc(v);
+  }
+
+  // harga: "Rp 1.500.000"; kosong (NO AKS belum punya harga) -> "-"
+  function fmtHarga(v) {
+    if (v === '' || v == null || isNaN(Number(v))) return '<span class="kosong">-</span>';
+    return 'Rp ' + Number(v).toLocaleString('id-ID');
   }
 
   // Parameter filter wilayah untuk URL viewData / export
@@ -277,7 +307,8 @@
         const produkLabel = res.semua ? '<b>Semua produk</b>' : `<b>${esc(res.sku)}</b> (${esc(res.jenisProduk)})`;
         viewSummary.innerHTML = `${produkLabel} — Tahun ${esc(res.rangeLabel)}` +
           `${res.wilayahLabel ? ' — <b>' + esc(res.wilayahLabel) + '</b>' : ''}` +
-          ` — Total <b>${esc(res.totalUnit)}</b> unit dari <b>${esc(res.jumlahBaris)}</b> baris`;
+          ` — Total <b>${esc(res.totalUnit)}</b> unit dari <b>${esc(res.jumlahBaris)}</b> baris` +
+          ` (<b>${esc(res.jumlahHarga || 0)}</b> baris sudah ada harga)`;
         renderViewTable(filterRows(viewRowsCache, viewSearch.value));
       })
       .catch(() => { viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.'; });
@@ -287,7 +318,8 @@
     q = (q || '').trim().toLowerCase();
     if (!q) return rows;
     return rows.filter(r =>
-      [r.eps, r.produk, r.namaPaket, r.instansi, r.satuanKerja, r.provinsi, r.alamat, r.sumberDana]
+      [r.eps, r.produk, r.tahun, r.bulan, r.namaPaket, r.instansi, r.satuanKerja, r.provinsi,
+       r.alamat, r.sumberDana, r.harga, r.catatan, r.sumberFile]
         .some(v => String(v == null ? '' : v).toLowerCase().includes(q))
     );
   }
@@ -303,8 +335,10 @@
     viewTbody.innerHTML = rows.map(r => `
       <tr>
         <td class="num">${esc(r.no)}</td>
-        <td>${esc(r.eps)}</td>
+        <td class="nowrap">${esc(r.eps)}</td>
         ${viewSemua ? `<td>${esc(r.produk)}</td>` : ''}
+        <td class="num">${teks(r.tahun)}</td>
+        <td class="num">${teks(r.bulan)}</td>
         <td>${esc(r.namaPaket)}</td>
         <td>${esc(r.instansi)}</td>
         <td>${esc(r.satuanKerja)}</td>
@@ -312,6 +346,9 @@
         <td>${esc(r.alamat)}</td>
         <td>${esc(r.sumberDana)}</td>
         <td class="num">${esc(r.jumlahUnit)}</td>
+        <td class="rp">${fmtHarga(r.harga)}</td>
+        <td>${teks(r.catatan)}</td>
+        <td>${teks(r.sumberFile)}</td>
       </tr>`).join('');
   }
 
