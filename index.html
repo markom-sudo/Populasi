@@ -67,6 +67,33 @@
   table#viewTable td.nowrap{white-space:nowrap;}
   table#viewTable .kosong{color:var(--text-3);}
   #viewEmpty{text-align:center;color:var(--text-3);font-size:13px;padding:32px 0;}
+
+  /* ================= LAYOUT PC (>= 900px) ================= */
+  @media (min-width:900px){
+    .container{
+      max-width:1360px;padding:28px 32px 48px;
+      display:grid;grid-template-columns:320px minmax(0,1fr);column-gap:36px;align-items:start;
+    }
+    .container > h1{grid-column:1 / -1;font-size:24px;}
+    .container > p.sub{grid-column:1 / -1;margin-bottom:24px;}
+
+    /* panel kiri: formulir */
+    .side{
+      position:sticky;top:20px;
+      border:1px solid var(--border);border-radius:var(--radius);padding:2px 18px 22px;
+    }
+    .side label:first-child{margin-top:16px;}
+
+    /* panel kanan: hasil */
+    .tab-row{display:none;}
+    #paneDownload{display:flex;align-items:center;gap:14px;margin-bottom:14px;}
+    #paneLihat{display:block;}
+    #btnDownload{width:auto;min-width:180px;margin-top:0;padding:0 24px;}
+    #btnDownload:not(:disabled):hover{opacity:.9;}
+    #status{margin-top:0;text-align:left;}
+    #viewSummary{margin-top:0;}
+    #viewTableWrap{max-height:calc(100vh - 290px);}
+  }
 </style>
 </head>
 <body>
@@ -74,6 +101,7 @@
   <h1>Populasi Data Penjualan</h1>
   <p class="sub">Pilih produk, rentang tahun, dan wilayah, lalu download atau lihat langsung hasilnya.</p>
 
+  <aside class="side">
   <label for="selProduk">Produk (SKU)</label>
   <select id="selProduk"><option>Memuat...</option></select>
 
@@ -88,7 +116,9 @@
     <div><select id="selWilayah" disabled><option value="SEMUA">Semua wilayah</option></select></div>
     <div><select id="selProvinsi" disabled><option value="">Semua provinsi</option></select></div>
   </div>
+  </aside>
 
+  <div class="main">
   <div class="tab-row">
     <button id="tabDownload" class="tab-btn active" type="button">Download</button>
     <button id="tabLihat" class="tab-btn" type="button">Lihat</button>
@@ -127,6 +157,7 @@
       </table>
       <div id="viewEmpty" style="display:none;">Tidak ada baris yang cocok.</div>
     </div>
+  </div>
   </div>
 </div>
 <script>
@@ -380,6 +411,19 @@
       })
       .catch(() => { setStatus('Gagal export. Coba lagi.'); btnDownload.disabled = false; });
   });
+
+  /* ---------------- Mode PC: hasil selalu tampil ---------------- */
+  const PC_MQ = window.matchMedia('(min-width:900px)');
+  function applyLayoutMode() {
+    if (PC_MQ.matches) {
+      activeTab = 'lihat';                       // tanpa tab: muat hasil otomatis
+      if (!selTahunAwal.disabled) muatViewData();
+    } else {
+      switchTab('download');                     // kembali ke tampilan HP/tablet
+    }
+  }
+  PC_MQ.addEventListener('change', applyLayoutMode);
+  applyLayoutMode();
 
   muatProduk();
 </script>
