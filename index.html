@@ -426,6 +426,13 @@
   applyLayoutMode();
 
   muatProduk();
+
+    // Service worker: kerangka halaman & data pilihan disimpan di perangkat agar buka berikutnya cepat
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
 </script>
 </body>
 </html>
