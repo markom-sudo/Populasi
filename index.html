@@ -175,6 +175,7 @@
   let activeTab = 'download';
   let viewRowsCache = []; // hasil terakhir action=viewData, difilter pencarian di sisi browser
   let viewSemua = false;  // true kalau produk "Semua produk" dipilih
+  let viewReqId = 0; // penanda request terbaru
 
   function setStatus(msg) { statusEl.textContent = msg; }
 
@@ -317,32 +318,55 @@
   function muatViewData() {
     const tahunAwal = selTahunAwal.value, tahunAkhir = selTahunAkhir.value;
     if (!selProduk.value || !tahunAwal || !tahunAkhir || selTahunAwal.disabled) return;
-
+  
+    // validasi rentang tahun
+    if (parseInt(tahunAwal, 10) > parseInt(tahunAkhir, 10)) {
+      viewRowsCache = [];
+      viewSummary.textContent = 'Tahun awal tidak boleh lebih besar dari tahun akhir.';
+      renderViewTable([]);
+      return;
+    }
+  
+    const myId = ++viewReqId;
+  
     viewSummary.textContent = 'Memuat ringkasan...';
     viewTbody.innerHTML = '';
     viewEmpty.style.display = 'none';
-
+  
     fetch(WEBAPP_URL + '?action=viewData&sku=' + encodeURIComponent(selProduk.value) +
           '&tahunAwal=' + encodeURIComponent(tahunAwal) +
           '&tahunAkhir=' + encodeURIComponent(tahunAkhir) + filterQS())
       .then(r => r.json())
       .then(res => {
+        if (myId !== viewReqId) return; // abaikan response lama
+  
         if (res.error) {
           viewSummary.textContent = res.error;
           viewRowsCache = [];
           renderViewTable([]);
           return;
         }
+  
         viewSemua = !!res.semua;
-        viewRowsCache = res.rows;
-        const produkLabel = res.semua ? '<b>Semua produk</b>' : `<b>${esc(res.sku)}</b> (${esc(res.jenisProduk)})`;
+        viewRowsCache = Array.isArray(res.rows) ? res.rows : [];
+  
+        const produkLabel = res.semua
+          ? '<b>Semua produk</b>'
+          : `<b>${esc(res.sku)}</b> (${esc(res.jenisProduk)})`;
+  
         viewSummary.innerHTML = `${produkLabel} — Tahun ${esc(res.rangeLabel)}` +
           `${res.wilayahLabel ? ' — <b>' + esc(res.wilayahLabel) + '</b>' : ''}` +
           ` — Total <b>${esc(res.totalUnit)}</b> unit dari <b>${esc(res.jumlahBaris)}</b> baris` +
           ` (<b>${esc(res.jumlahHarga || 0)}</b> baris sudah ada harga)`;
+  
         renderViewTable(filterRows(viewRowsCache, viewSearch.value));
       })
-      .catch(() => { viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.'; });
+      .catch(() => {
+        if (myId !== viewReqId) return;
+        viewRowsCache = [];
+        viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.';
+        renderViewTable([]);
+      });
   }
 
   function filterRows(rows, q) {
