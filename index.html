@@ -129,9 +129,40 @@
     #viewSummary{margin-top:0;}
     #viewTableWrap{max-height:calc(100vh - 290px);}
   }
+
+  /* ================= ANIMASI LOADING ================= */
+  /* bar tipis di atas layar: tampil selama ada permintaan ke server */
+  #topLoader{position:fixed;top:0;left:0;right:0;height:3px;z-index:50;overflow:hidden;opacity:0;pointer-events:none;transition:opacity .25s ease;}
+  #topLoader.on{opacity:1;}
+  #topLoader::before{content:'';position:absolute;top:0;bottom:0;width:40%;border-radius:3px;background:var(--brand);animation:loadBar 1s cubic-bezier(.4,0,.2,1) infinite;}
+  @keyframes loadBar{0%{left:-40%;}100%{left:100%;}}
+
+  /* dropdown yang sedang menunggu data */
+  select.loading{animation:selPulse 1s ease-in-out infinite;pointer-events:none;}
+  @keyframes selPulse{0%,100%{opacity:1;}50%{opacity:.45;}}
+
+  /* kerangka (skeleton) berkilau untuk ringkasan & tabel */
+  .sk{display:block;height:12px;border-radius:6px;background:linear-gradient(90deg,var(--surface) 25%,var(--border) 50%,var(--surface) 75%);background-size:200% 100%;animation:shimmer 1.1s linear infinite;}
+  @keyframes shimmer{from{background-position:200% 0;}to{background-position:-200% 0;}}
+  .sk-line{height:14px;width:75%;}
+  .sk-line + .sk-line{width:45%;margin-top:8px;}
+  table#viewTable td .sk{height:11px;}
+
+  /* tabel / ringkasan muncul halus setelah data tiba */
+  @keyframes fadeUp{from{opacity:0;transform:translateY(10px);}}
+  #viewTableWrap.fade-in,#viewSummary.fade-in{animation:fadeUp .6s cubic-bezier(.22,.8,.3,1) backwards;}
+
+  /* spinner di tombol Download saat menyiapkan file */
+  @keyframes spin{to{transform:rotate(360deg);}}
+  #btnDownload.busy::after{content:'';display:inline-block;width:14px;height:14px;margin-left:10px;border:2px solid currentColor;border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;}
+
+  @media (prefers-reduced-motion:reduce){
+    #topLoader::before,select.loading,.sk,#viewTableWrap.fade-in,#viewSummary.fade-in,#btnDownload.busy::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;}
+  }
 </style>
 </head>
 <body>
+<div id="topLoader"></div>
 <div class="container">
   <h1>Populasi Data Penjualan</h1>
   <p class="sub">Pilih produk, rentang tahun, dan wilayah, lalu download atau lihat langsung hasilnya.</p>
@@ -247,10 +278,55 @@
     if (window.parent !== window) window.parent.postMessage({ __elitechReady: 'populasi' }, '*');
   }
 
+  /* ---------------- Indikator loading ---------------- */
+  let pendingLoads = 0;
+  function beginLoad() { pendingLoads++; $('topLoader').classList.add('on'); }
+  function endLoad() {
+    pendingLoads = Math.max(0, pendingLoads - 1);
+    if (!pendingLoads) $('topLoader').classList.remove('on');
+  }
+  function setSelLoading(on) {
+    for (let i = 1; i < arguments.length; i++) arguments[i].classList.toggle('loading', on);
+  }
+
+  // Kerangka tabel + ringkasan selama data belum siap
+  let viewLoading = false;
+  const SK_W   = [30, 70, 60, 40, 40, 90, 80, 80, 60, 90, 60, 30, 60, 50, 60];            // lebar tiap kolom (%)
+  const SK_CLS = ['num', '', '', 'num', 'num', '', '', '', '', '', '', 'num', 'rp', '', ''];
+  function showViewSkeleton(semua) {
+    viewLoading = true;
+    viewSemua = !!semua;
+    $('thProduk').style.display = viewSemua ? '' : 'none';
+    viewEmpty.style.display = 'none';
+    viewSummary.classList.remove('fade-in');
+    viewSummary.innerHTML = '<span class="sk sk-line"></span><span class="sk sk-line"></span>';
+    const cols = SK_W.map((w, i) => ({ w: w, c: SK_CLS[i], i: i })).filter(x => viewSemua || x.i !== 2);
+    let rows = '';
+    for (let r = 0; r < 8; r++) {
+      rows += '<tr>' + cols.map(x =>
+        '<td class="' + x.c + '"><span class="sk" style="width:' + Math.max(20, x.w - (r % 3) * 8) + '%;' +
+        (x.c === 'num' ? 'margin:0 auto;' : '') + '"></span></td>'
+      ).join('') + '</tr>';
+    }
+    viewTbody.innerHTML = rows;
+  }
+  function clearView(msg) {
+    viewLoading = false;
+    viewRowsCache = [];
+    viewSummary.textContent = msg;
+    renderViewTable([]);
+  }
+
+  /* ---------------- Memuat data pilihan ---------------- */
+  let tahunReqId = 0, wilReqId = 0, provReqId = 0;
+
   function muatProduk() {
+    beginLoad();
+    setSelLoading(true, selProduk);
     fetch(WEBAPP_URL + '?action=listProduk')
       .then(r => r.json())
       .then(list => {
+        setSelLoading(false, selProduk);
         if (!Array.isArray(list) || !list.length) {
           selProduk.innerHTML = '<option>Belum ada data</option>';
         } else {
@@ -261,21 +337,36 @@
         }
         notifyReady();
       })
-      .catch(() => { setStatus('Gagal memuat daftar produk. Cek URL Web App.'); notifyReady(); });
+      .catch(() => {
+        setSelLoading(false, selProduk);
+        setStatus('Gagal memuat daftar produk. Cek URL Web App.');
+        notifyReady();
+      })
+      .finally(endLoad);
   }
 
   function muatTahun(sku) {
+    const myId = ++tahunReqId;
+    ++wilReqId; ++provReqId; ++viewReqId;     // batalkan semua permintaan turunan yang masih berjalan
     selTahunAwal.disabled = true; selTahunAkhir.disabled = true;
     selWilayah.disabled = true; selProvinsi.disabled = true;
     selTahunAwal.innerHTML = '<option>Memuat...</option>';
     selTahunAkhir.innerHTML = '<option>Memuat...</option>';
     btnDownload.disabled = true;
+    setStatus('');
+    setSelLoading(true, selTahunAwal, selTahunAkhir, selWilayah, selProvinsi);
+    if (activeTab === 'lihat') showViewSkeleton(sku === 'SEMUA');
+    beginLoad();
     fetch(WEBAPP_URL + '?action=listTahun&sku=' + encodeURIComponent(sku))
       .then(r => r.json())
       .then(list => {
+        if (myId !== tahunReqId) return;       // produk sudah diganti lagi -> abaikan
+        setSelLoading(false, selTahunAwal, selTahunAkhir);
         if (!Array.isArray(list) || !list.length) {
           selTahunAwal.innerHTML = '<option>Tidak ada data</option>';
           selTahunAkhir.innerHTML = '<option>Tidak ada data</option>';
+          setSelLoading(false, selWilayah, selProvinsi);
+          if (activeTab === 'lihat') clearView('Tidak ada data untuk produk ini.');
           return;
         }
         const opts = list.map(t => `<option value="${esc(t)}">${esc(t)}</option>`).join('');
@@ -288,46 +379,80 @@
         btnDownload.disabled = false;
         muatWilayah();
       })
-      .catch(() => setStatus('Gagal memuat daftar tahun.'));
+      .catch(() => {
+        if (myId !== tahunReqId) return;
+        setSelLoading(false, selTahunAwal, selTahunAkhir, selWilayah, selProvinsi);
+        selTahunAwal.innerHTML = '<option>Gagal memuat</option>';
+        selTahunAkhir.innerHTML = '<option>Gagal memuat</option>';
+        setStatus('Gagal memuat daftar tahun.');
+        if (activeTab === 'lihat') clearView('Gagal memuat data. Coba lagi.');
+      })
+      .finally(endLoad);
   }
 
   // Daftar wilayah yang ADA datanya untuk produk + rentang tahun terpilih
   function muatWilayah() {
     const sku = selProduk.value;
     if (!sku || selTahunAwal.disabled) return;
+    const myId = ++wilReqId;
+    ++provReqId; ++viewReqId;
     const prev = selWilayah.value;
+    selWilayah.disabled = true; selProvinsi.disabled = true;
+    setSelLoading(true, selWilayah, selProvinsi);
+    if (activeTab === 'lihat') showViewSkeleton(sku === 'SEMUA');
+    beginLoad();
     fetch(WEBAPP_URL + '?action=listWilayah&sku=' + encodeURIComponent(sku) +
           '&tahunAwal=' + encodeURIComponent(selTahunAwal.value) +
           '&tahunAkhir=' + encodeURIComponent(selTahunAkhir.value))
       .then(r => r.json())
       .then(list => {
+        if (myId !== wilReqId) return;
         list = Array.isArray(list) ? list : [];
         selWilayah.innerHTML = '<option value="SEMUA">Semua wilayah</option>' +
           list.map(w => `<option value="${esc(w.wilayah)}">${esc(w.wilayah)} (${esc(w.totalUnit)} unit)</option>`).join('');
         selWilayah.value = list.some(w => w.wilayah === prev) ? prev : 'SEMUA';
         selWilayah.disabled = false;
+        setSelLoading(false, selWilayah);
         muatProvinsi();
       })
-      .catch(() => { selWilayah.disabled = true; onSelectionChanged(); });
+      .catch(() => {
+        if (myId !== wilReqId) return;
+        setSelLoading(false, selWilayah, selProvinsi);
+        selWilayah.disabled = true;
+        onSelectionChanged();
+      })
+      .finally(endLoad);
   }
 
   // Provinsi di dalam wilayah terpilih (aktif hanya kalau wilayah bukan "Semua")
   function muatProvinsi() {
+    const myId = ++provReqId;
     const reset = '<option value="">Semua provinsi</option>';
     if (selWilayah.value === 'SEMUA') {
       selProvinsi.innerHTML = reset;
       selProvinsi.disabled = true;
+      setSelLoading(false, selProvinsi);
       return onSelectionChanged();
     }
+    selProvinsi.disabled = true;
+    setSelLoading(true, selProvinsi);
+    beginLoad();
     fetch(WEBAPP_URL + '?action=listProvinsi&sku=' + encodeURIComponent(selProduk.value) +
           '&wilayah=' + encodeURIComponent(selWilayah.value))
       .then(r => r.json())
       .then(list => {
+        if (myId !== provReqId) return;
         selProvinsi.innerHTML = reset + (Array.isArray(list) ? list : []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
         selProvinsi.disabled = false;
+        setSelLoading(false, selProvinsi);
         onSelectionChanged();
       })
-      .catch(() => onSelectionChanged());
+      .catch(() => {
+        if (myId !== provReqId) return;
+        setSelLoading(false, selProvinsi);
+        onSelectionChanged();
+      })
+      .finally(endLoad);
   }
 
   function onSelectionChanged() {
@@ -356,53 +481,47 @@
   function muatViewData() {
     const tahunAwal = selTahunAwal.value, tahunAkhir = selTahunAkhir.value;
     if (!selProduk.value || !tahunAwal || !tahunAkhir || selTahunAwal.disabled) return;
-  
+
     // validasi rentang tahun
     if (parseInt(tahunAwal, 10) > parseInt(tahunAkhir, 10)) {
-      viewRowsCache = [];
-      viewSummary.textContent = 'Tahun awal tidak boleh lebih besar dari tahun akhir.';
-      renderViewTable([]);
+      ++viewReqId;
+      clearView('Tahun awal tidak boleh lebih besar dari tahun akhir.');
       return;
     }
-  
+
     const myId = ++viewReqId;
-  
-    viewSummary.textContent = 'Memuat ringkasan...';
-    viewTbody.innerHTML = '';
-    viewEmpty.style.display = 'none';
-  
+    showViewSkeleton(selProduk.value === 'SEMUA');
+    beginLoad();
+
     fetch(WEBAPP_URL + '?action=viewData&sku=' + encodeURIComponent(selProduk.value) +
           '&tahunAwal=' + encodeURIComponent(tahunAwal) +
           '&tahunAkhir=' + encodeURIComponent(tahunAkhir) + filterQS())
       .then(r => r.json())
       .then(res => {
         if (myId !== viewReqId) return; // abaikan response lama
-  
+
         if (res.error) {
-          viewSummary.textContent = res.error;
-          viewRowsCache = [];
-          renderViewTable([]);
+          clearView(res.error);
           return;
         }
-  
+
+        viewLoading = false;
         viewSemua = !!res.semua;
         viewRowsCache = Array.isArray(res.rows) ? res.rows : [];
         lastRes = res;
-        renderSummary();
-  
-        renderViewTable(filterRows(viewRowsCache, viewSearch.value));
+        renderSummary(true);
+        renderViewTable(filterRows(viewRowsCache, viewSearch.value), true);
       })
       .catch(() => {
         if (myId !== viewReqId) return;
-        viewRowsCache = [];
-        viewSummary.textContent = 'Gagal memuat ringkasan. Coba lagi.';
-        renderViewTable([]);
-      });
+        clearView('Gagal memuat ringkasan. Coba lagi.');
+      })
+      .finally(endLoad);
   }
 
-  function renderSummary() {
+  function renderSummary(animate) {
     const res = lastRes;
-    if (!res) return;
+    if (!res || viewLoading) return;
     const produkLabel = res.semua
       ? '<b>Semua produk</b>'
       : `<b>${esc(res.sku)}</b> (${esc(res.jenisProduk)})`;
@@ -410,6 +529,11 @@
       `${res.wilayahLabel ? ' — <b>' + esc(res.wilayahLabel) + '</b>' : ''}` +
       ` — Total <b>${esc(res.totalUnit)}</b> unit dari <b>${esc(res.jumlahBaris)}</b> baris` +
       (PRESENTASI ? '' : ` (<b>${esc(res.jumlahHarga || 0)}</b> baris sudah ada harga)`);
+    if (animate) {
+      viewSummary.classList.remove('fade-in');
+      void viewSummary.offsetWidth;
+      viewSummary.classList.add('fade-in');
+    }
   }
 
   function filterRows(rows, q) {
@@ -422,7 +546,8 @@
     );
   }
 
-  function renderViewTable(rows) {
+  function renderViewTable(rows, animate) {
+    viewLoading = false;
     $('thProduk').style.display = viewSemua ? '' : 'none';
     if (!rows.length) {
       viewTbody.innerHTML = '';
@@ -448,6 +573,12 @@
         <td>${teks(r.catatan)}</td>
         <td>${teks(r.sumberFile)}</td>
       </tr>`).join('');
+    if (animate) {
+      const w = $('viewTableWrap');
+      w.classList.remove('fade-in');
+      void w.offsetWidth;
+      w.classList.add('fade-in');
+    }
   }
 
   function setPresentasi(on) {
@@ -455,6 +586,7 @@
     if (on === PRESENTASI) return;
     PRESENTASI = on;
     document.body.classList.toggle('presentasi', on);
+    if (viewLoading) return;                  // sedang memuat: hasil nanti otomatis mengikuti mode baru
     renderSummary();
     renderViewTable(filterRows(viewRowsCache, viewSearch.value));
   }
@@ -478,13 +610,15 @@
       return;
     }
     btnDownload.disabled = true;
+    btnDownload.classList.add('busy');
     setStatus('Menyiapkan file, mohon tunggu...');
+    beginLoad();
     fetch(WEBAPP_URL + '?action=export&sku=' + encodeURIComponent(selProduk.value) +
           '&tahunAwal=' + encodeURIComponent(tahunAwal) +
           '&tahunAkhir=' + encodeURIComponent(tahunAkhir) + filterQS())
       .then(r => r.json())
       .then(res => {
-        if (res.error) { setStatus(res.error); btnDownload.disabled = false; return; }
+        if (res.error) { setStatus(res.error); return; }
         const link = document.createElement('a');
         link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + res.base64;
         link.download = res.filename;
@@ -492,9 +626,13 @@
         link.click();
         document.body.removeChild(link);
         setStatus('File terunduh: ' + res.filename);
-        btnDownload.disabled = false;
       })
-      .catch(() => { setStatus('Gagal export. Coba lagi.'); btnDownload.disabled = false; });
+      .catch(() => { setStatus('Gagal export. Coba lagi.'); })
+      .finally(() => {
+        btnDownload.disabled = false;
+        btnDownload.classList.remove('busy');
+        endLoad();
+      });
   });
 
   /* ---------------- Mode PC: hasil selalu tampil ---------------- */
