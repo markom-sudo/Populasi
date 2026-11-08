@@ -6,7 +6,7 @@
    - Export (download) tidak pernah di-cache: selalu data terbaru.
    Naikkan VERSION kalau isi sw.js ini diubah.
    ========================================================= */
-const VERSION = 'v2';
+const VERSION = 'v3';
 const SHELL_CACHE = 'populasi-shell-' + VERSION;
 const DATA_CACHE  = 'populasi-data-' + VERSION;
 const SHELL_FILES = ['./', './index.html'];
