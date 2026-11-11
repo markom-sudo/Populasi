@@ -108,6 +108,20 @@
   @keyframes lb{0%{left:-40%;}100%{left:100%;}}
   @media (prefers-reduced-motion:reduce){#topLoader::before{animation-duration:.01ms;}}
 
+
+  .tabs{display:inline-flex;background:var(--surface);border-radius:999px;padding:4px;margin:0 0 16px;}
+  .tabs button{font:600 13px 'Inter',sans-serif;border:none;background:transparent;color:var(--text-2);padding:9px 20px;border-radius:999px;cursor:pointer;}
+  .tabs button.on{background:var(--card);color:var(--brand);box-shadow:0 1px 3px rgba(20,21,26,.12);}
+  .cls{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin:16px 0;}
+  .cls .kpi .v{font-size:22px;}
+  .tag{display:inline-block;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap;}
+  .t-naik{background:#e3f4ea;color:#17703d;}.t-lonjak{background:#fdf0d8;color:#8a5a0a;}.t-inti{background:var(--brand-soft);color:var(--brand);}
+  .t-kecil{background:var(--surface);color:var(--text-2);}.t-turun{background:#fde7e0;color:#a2401f;}.t-disc{background:#f6dcdc;color:#9b1c1c;}
+  :root[data-theme="dark"] .t-naik{background:#163a27;color:#7fd6a3;}:root[data-theme="dark"] .t-lonjak{background:#3b2f14;color:#e6b95a;}
+  :root[data-theme="dark"] .t-turun{background:#3d2218;color:#f0a183;}:root[data-theme="dark"] .t-disc{background:#3d1b1b;color:#f08a8a;}
+  .grp{margin-top:18px;}.grp h2{margin-bottom:2px;}.grp p{margin:0 0 10px;font-size:12.5px;color:var(--text-2);}
+  .spark{display:block;}
+
   @media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr);}.cv{height:260px;}.wrap{padding:16px 12px 40px;}h1{font-size:20px;}}
 </style>
 </head>
@@ -128,6 +142,9 @@
   <h1>Laporan Penjualan</h1>
   <p class="sub">Berdasarkan data populasi e-purchasing. Atur periode dan filter, lalu lihat grafik atau export.</p>
 
+  <div class="tabs"><button type="button" id="tabLap" class="on">Laporan</button><button type="button" id="tabAna">Analisis produk</button></div>
+
+  <div id="viewLaporan">
   <section class="filters">
     <div class="frow">
       <div class="fld"><label for="bulanAwal">Dari bulan</label><select id="bulanAwal"></select></div>
@@ -159,6 +176,19 @@
   </section>
 
   <div id="hasil"><div class="empty">Memuat pilihan filter...</div></div>
+  </div>
+
+  <div id="viewAnalisis" style="display:none;">
+    <section class="filters">
+      <div class="frow">
+        <div class="fld"><label for="selJendela">Periode terbaru</label>
+          <select id="selJendela"><option value="1">1 tahun terakhir</option><option value="2" selected>2 tahun terakhir</option><option value="3">3 tahun terakhir</option></select></div>
+        <div class="fld"><label for="selKatAna">Kategori</label><select id="selKatAna"><option value="">Semua kategori</option></select></div>
+        <div class="fld" style="grid-column:span 2;"><div class="actions" style="justify-content:flex-end;"><span id="statusAna" style="font-size:13px;color:var(--text-2);margin-right:auto;"></span><button class="btn ghost" id="btnXlsAna" disabled>Export Excel</button></div></div>
+      </div>
+    </section>
+    <div id="hasilAna"><div class="empty">Memuat analisis...</div></div>
+  </div>
 </div>
 
 <script>
@@ -528,6 +558,126 @@
   window.addEventListener('message', e => {
     if (e.source !== window.parent) return;
     if (e.data && e.data.__elitech === 'theme') window.__setTheme(e.data.theme);
+  });
+
+  /* =============== ANALISIS PRODUK =============== */
+  const KELAS = {
+    NAIK:   { t: 'Berpotensi naik',               c: 't-naik',   d: 'Penjualan tumbuh lebih cepat dari pasar dan tersebar di banyak paket. Kandidat stok dan promosi lebih besar.' },
+    LONJAK: { t: 'Lonjakan satu proyek',          c: 't-lonjak', d: 'Naik tajam, tetapi sebagian besar dari satu paket. Belum tentu terulang, jangan langsung dianggap tren.' },
+    INTI:   { t: 'Inti stabil',                   c: 't-inti',   d: 'Porsi terhadap pasar terjaga dengan volume cukup. Jaga ketersediaan.' },
+    KECIL:  { t: 'Kecil tapi bertahan',           c: 't-kecil',  d: 'Volume kecil, namun tidak turun lebih cepat dari pasar.' },
+    TURUN:  { t: 'Menurun (kandidat marketplace)',c: 't-turun',  d: 'Masih ada penjualan, tetapi turun lebih cepat dari pasar. Cocok dicoba di marketplace bila produknya bisa dibeli umum.' },
+    DISC:   { t: 'Kandidat discontinue',          c: 't-disc',   d: 'Hampir tidak terjual di periode terbaru. Cek stok, margin, dan kebutuhan sparepart sebelum diputuskan.' },
+    MINIM:  { t: 'Data terlalu sedikit',          c: 't-kecil',  d: 'Total penjualan sepanjang waktu sangat kecil, belum bisa dinilai.' }
+  };
+  const URUT_KELAS = ['NAIK', 'LONJAK', 'INTI', 'KECIL', 'TURUN', 'DISC', 'MINIM'];
+  let PORTO = null, ANA = null;
+
+  function pilihTab(t) {
+    $('viewLaporan').style.display = t === 'lap' ? '' : 'none';
+    $('viewAnalisis').style.display = t === 'ana' ? '' : 'none';
+    $('tabLap').classList.toggle('on', t === 'lap'); $('tabAna').classList.toggle('on', t === 'ana');
+    if (t === 'ana' && !PORTO) muatPorto();
+    if (t === 'lap' && DATA && DATA.jumlahBaris) gambarGrafik();   // grafik perlu digambar ulang setelah tab tampil
+  }
+  $('tabLap').addEventListener('click', () => pilihTab('lap'));
+  $('tabAna').addEventListener('click', () => pilihTab('ana'));
+  $('selJendela').addEventListener('change', hitungAnalisis);
+  $('selKatAna').addEventListener('change', hitungAnalisis);
+
+  async function muatPorto() {
+    $('hasilAna').innerHTML = '<div class="empty">Menghitung...</div>';
+    try {
+      const r = await api({ action: 'laporanPortofolio' });
+      if (!Array.isArray(r)) throw new Error('bad');
+      PORTO = r;
+      const kat = [...new Set(r.map(x => x.kategori))].sort();
+      opts($('selKatAna'), [['', 'Semua kategori']].concat(kat.map(k => [k, k])), '');
+      hitungAnalisis();
+    } catch (e) {
+      if (e.message !== 'unauthorized') $('hasilAna').innerHTML = '<div class="empty">Gagal memuat analisis. Pastikan baris doGet laporanPortofolio sudah ditambahkan dan di-deploy.</div>';
+    }
+  }
+
+  function klasifikasi(x) {
+    const { R, P, mk, paketR, topShare, total } = x;
+    const idx = P > 0 ? (R / P) / mk : Infinity;
+    x.idx = idx;
+    if (P === 0 && R >= 10) return ['NAIK', 'Produk baru: mulai terjual di periode terbaru (' + fmtN(paketR) + ' paket)'];
+    if (total < 30) return ['MINIM', 'Total penjualan sepanjang waktu hanya ' + fmtN(total) + ' unit'];
+    if (idx >= 1.5 && R >= 30) {
+      if (topShare >= 0.5) return ['LONJAK', 'Satu paket = ' + Math.round(topShare * 100) + '% dari ' + fmtN(R) + ' unit terbaru'];
+      return ['NAIK', 'Naik ' + (idx >= 10 ? '>10' : idx.toFixed(1)) + 'x lebih cepat dari pasar, ' + fmtN(paketR) + ' paket'];
+    }
+    if (R < 10 || (idx < 0.3 && R < 30)) return ['DISC', 'Hanya ' + fmtN(R) + ' unit di periode terbaru (puncak ' + fmtN(x.peak) + ' unit per tahun)'];
+    if (idx >= 0.8) return R >= 50 ? ['INTI', 'Porsi terjaga (indeks ' + idx.toFixed(2) + '), ' + fmtN(R) + ' unit'] : ['KECIL', 'Volume kecil (' + fmtN(R) + ' unit), porsi terjaga'];
+    return ['TURUN', 'Turun ' + Math.round((1 - R / P) * 100) + '% (pasar turun ' + Math.round((1 - mk) * 100) + '%), indeks ' + idx.toFixed(2)];
+  }
+
+  function sparkline(x, tahunList) {
+    const vals = tahunList.map(t => x.tahun[t] ? x.tahun[t].unit : 0), mx = Math.max(1, ...vals);
+    const w = 7, g = 3, h = 26;
+    const bars = vals.map((v, i) => { const bh = v ? Math.max(2, v / mx * h) : 0; return `<rect x="${i * (w + g)}" y="${h - bh}" width="${w}" height="${bh}" rx="1.5" fill="${i >= vals.length - 2 ? 'var(--brand)' : 'var(--text-3)'}"><title>${tahunList[i]}: ${fmtN(v)} unit</title></rect>`; }).join('');
+    return `<svg class="spark" width="${vals.length * (w + g)}" height="${h}" viewBox="0 0 ${vals.length * (w + g)} ${h}">${bars}</svg>`;
+  }
+
+  function hitungAnalisis() {
+    if (!PORTO) return;
+    const kat = $('selKatAna').value, win = +$('selJendela').value;
+    const list = PORTO.filter(x => !kat || x.kategori === kat);
+    const semuaTahun = [...new Set(PORTO.flatMap(x => Object.keys(x.tahun).map(Number)))].sort((a, b) => a - b);
+    const maxY = semuaTahun[semuaTahun.length - 1];
+    const rec = [], prev = [];
+    for (let i = 0; i < win; i++) { rec.push(maxY - i); prev.push(maxY - win - i); }
+    const sum = (x, ys, f) => ys.reduce((s, y) => s + (x.tahun[y] ? x.tahun[y][f] : 0), 0);
+    let totR = 0, totP = 0;
+    list.forEach(x => { totR += sum(x, rec, 'unit'); totP += sum(x, prev, 'unit'); });
+    const mk = totP ? totR / totP : 1;
+    const tahunSpark = semuaTahun.slice(-7);
+    const rows = list.map(x => {
+      const o = { sku: x.sku, kategori: x.kategori, tahun: x.tahun, mk: mk,
+        R: sum(x, rec, 'unit'), P: sum(x, prev, 'unit'), paketR: sum(x, rec, 'paket'),
+        total: Object.values(x.tahun).reduce((s, t) => s + t.unit, 0),
+        peak: Math.max(0, ...Object.values(x.tahun).map(t => t.unit)) };
+      const maksR = Math.max(0, ...rec.map(y => x.tahun[y] ? x.tahun[y].maks : 0));
+      o.topShare = o.R ? maksR / o.R : 0;
+      const k = klasifikasi(o); o.kelas = k[0]; o.alasan = k[1];
+      return o;
+    });
+    ANA = { rows, rec, prev, mk, tahunSpark, totR, totP };
+    renderAnalisis();
+  }
+
+  function renderAnalisis() {
+    const { rows, rec, prev, mk, tahunSpark, totR, totP } = ANA;
+    const lab = ys => ys.length === 1 ? ys[0] : Math.min(...ys) + '-' + Math.max(...ys);
+    const jml = {}; rows.forEach(r => { jml[r.kelas] = (jml[r.kelas] || 0) + 1; });
+    const peringatan = `
+      <div class="notice"><b>Cara membaca.</b> Total unit turun dari ${fmtN(totP)} (${lab(prev)}) menjadi ${fmtN(totR)} (${lab(rec)}), atau ${Math.round((mk - 1) * 100)}%. Karena seluruh pasar mengecil, produk dinilai dengan <b>indeks relatif</b> (pertumbuhan produk dibagi pertumbuhan pasar), bukan angka mentah. Indeks di atas 1 berarti porsinya naik.</div>
+      <div class="notice"><b>Batasan data.</b> Baris tahun 2026 tidak punya bulan karena memakai tahun fallback, jadi dua tahun terbaru sebaiknya dibaca bersama dan bukan dibandingkan satu per satu. Data ini juga hanya mencatat kanal e-purchasing: pembelian proyek pemerintah bisa melonjak satu kali dan hilang tahun berikutnya. Keputusan marketplace dan discontinue perlu dicocokkan dengan data stok, margin, dan penjualan marketplace Anda.</div>`;
+    const kartu = '<div class="cls">' + URUT_KELAS.filter(k => jml[k]).map(k =>
+      `<div class="kpi"><div class="l"><span class="tag ${KELAS[k].c}">${KELAS[k].t}</span></div><div class="v">${jml[k]}</div><div class="n">produk</div></div>`).join('') + '</div>';
+    const grup = URUT_KELAS.filter(k => jml[k]).map(k => {
+      const rs = rows.filter(r => r.kelas === k).sort((a, b) => b.R - a.R || b.P - a.P);
+      return `<div class="panel grp"><h2><span class="tag ${KELAS[k].c}">${KELAS[k].t}</span> &nbsp;${rs.length} produk</h2><p>${KELAS[k].d}</p>
+        <div class="twrap"><table><thead><tr><th>Produk</th><th>Kategori</th><th class="r">${lab(prev)}</th><th class="r">${lab(rec)}</th><th class="r">Indeks</th><th>Tren</th><th>Alasan</th></tr></thead><tbody>` +
+        rs.map(r => `<tr><td>${esc(r.sku)}</td><td>${esc(r.kategori)}</td><td class="r">${fmtN(r.P)}</td><td class="r">${fmtN(r.R)}</td><td class="r">${r.P > 0 ? r.idx.toFixed(2) : 'baru'}</td><td>${sparkline(r, tahunSpark)}</td><td>${esc(r.alasan)}</td></tr>`).join('') +
+        '</tbody></table></div></div>';
+    }).join('');
+    $('hasilAna').innerHTML = peringatan + kartu + grup;
+    $('btnXlsAna').disabled = false;
+  }
+
+  $('btnXlsAna').addEventListener('click', () => {
+    if (!ANA) return;
+    const lab = ys => ys.length === 1 ? ys[0] : Math.min(...ys) + '-' + Math.max(...ys);
+    const head = ['Penilaian', 'Produk (SKU)', 'Kategori', 'Unit ' + lab(ANA.prev), 'Unit ' + lab(ANA.rec), 'Indeks relatif', 'Paket terbaru', 'Total semua tahun', 'Puncak per tahun', 'Alasan'];
+    const rs = ANA.rows.slice().sort((a, b) => URUT_KELAS.indexOf(a.kelas) - URUT_KELAS.indexOf(b.kelas) || b.R - a.R);
+    const aoa = [head].concat(rs.map(r => [KELAS[r.kelas].t, r.sku, r.kategori, r.P, r.R, r.P > 0 ? +r.idx.toFixed(2) : 'baru', r.paketR, r.total, r.peak, r.alasan]));
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [30, 28, 24, 14, 14, 12, 12, 16, 16, 70].map(w => ({ wch: w }));
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Analisis produk');
+    XLSX.writeFile(wb, 'Analisis_Produk_' + lab(ANA.rec) + '.xlsx');
   });
 
   init();
