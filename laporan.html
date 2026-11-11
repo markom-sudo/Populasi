@@ -119,18 +119,72 @@
   .grp{margin-top:14px;}.grp h2{margin-bottom:2px;}.grp > p{margin:0 0 10px;font-size:12.5px;color:var(--text-2);}
   .spark{display:block;}
 
-  #login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:30;padding:20px;}
+  #login{position:fixed;inset:0;background:var(--bg);display:none;align-items:center;justify-content:center;z-index:60;padding:20px;}
   #login.on{display:flex;}
   #login form{width:100%;max-width:340px;}
   #login h1{font-size:20px;}
   #login .btn{width:100%;margin-top:12px;}
 
-  #topLoader{position:fixed;top:0;left:0;right:0;height:3px;z-index:50;overflow:hidden;opacity:0;pointer-events:none;transition:opacity .25s;}
+  #topLoader{position:fixed;top:0;left:0;right:0;height:3px;z-index:70;overflow:hidden;opacity:0;pointer-events:none;transition:opacity .25s;}
   #topLoader.on{opacity:1;}
   #topLoader::before{content:'';position:absolute;top:0;bottom:0;width:40%;background:var(--brand);animation:lb 1s cubic-bezier(.4,0,.2,1) infinite;}
   @keyframes lb{0%{left:-40%;}100%{left:100%;}}
   @media (prefers-reduced-motion:reduce){#topLoader::before{animation-duration:.01ms;}}
   @media (max-width:860px){.grid{grid-template-columns:minmax(0,1fr);}.cv{height:250px;}.wrap{padding:16px 12px 40px;}h1{font-size:20px;}}
+
+  /* ===== animasi, loading, detail, tema ===== */
+  :root{--dur:1s;}
+  @media (prefers-reduced-motion:reduce){:root{--dur:.01ms;}}
+
+  .head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;}
+  .themebtn{position:relative;width:42px;height:42px;flex:none;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;display:grid;place-items:center;}
+  .themebtn:hover{border-color:var(--brand);color:var(--brand);}
+  .themebtn .ic{grid-area:1/1;width:20px;height:20px;transition:transform var(--dur) cubic-bezier(.16,1,.3,1),opacity var(--dur) ease;}
+  .ic-moon{opacity:1;transform:none;}
+  .ic-sun{opacity:0;transform:rotate(-90deg) scale(.4);}
+  :root[data-theme="dark"] .ic-sun{opacity:1;transform:none;}
+  :root[data-theme="dark"] .ic-moon{opacity:0;transform:rotate(90deg) scale(.4);}
+
+  /* lingkaran meluas saat ganti tema (View Transitions) */
+  ::view-transition-old(root),::view-transition-new(root){animation:none;mix-blend-mode:normal;}
+  ::view-transition-old(root){z-index:1;}
+  ::view-transition-new(root){z-index:2;}
+
+  /* animasi masuk */
+  @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.98);}to{opacity:1;transform:none;}}
+  @keyframes fade{from{opacity:0;}to{opacity:1;}}
+  #viewLaporan,#viewAnalisis{animation:fade var(--dur) ease both;}
+  .anim :is(.kpi,.panel,.notice){animation:rise var(--dur) cubic-bezier(.16,1,.3,1) both;}
+  .anim :is(.kpi,.panel,.notice):nth-child(2){animation-delay:.1s;}
+  .anim :is(.kpi,.panel,.notice):nth-child(3){animation-delay:.2s;}
+  .anim :is(.kpi,.panel,.notice):nth-child(4){animation-delay:.3s;}
+  .anim :is(.kpi,.panel,.notice):nth-child(5){animation-delay:.4s;}
+  .anim :is(.kpi,.panel,.notice):nth-child(6){animation-delay:.5s;}
+  .anim :is(.kpi,.panel,.notice):nth-child(n+7){animation-delay:.6s;}
+
+  /* loading */
+  .shim{height:12px;border-radius:6px;margin:8px 0;background:linear-gradient(90deg,var(--surface) 25%,var(--border) 50%,var(--surface) 75%);background-size:200% 100%;animation:shim 1.4s linear infinite;}
+  .shim.w40{width:40%;}.shim.w50{width:50%;}.shim.w70{width:70%;}.shim.h24{height:24px;}.shim.block{height:220px;border-radius:10px;}
+  @keyframes shim{to{background-position:-200% 0;}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--border);border-top-color:var(--brand);animation:spin .8s linear infinite;}
+  .loadmsg{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--text-2);font-size:13px;margin:18px 0;}
+  .busy{position:relative;pointer-events:none;}
+  .busy>*{opacity:.4;transition:opacity .3s;}
+  .busy::after{content:'';position:absolute;top:90px;left:50%;width:34px;height:34px;margin-left:-17px;border-radius:50%;border:3.5px solid var(--border);border-top-color:var(--brand);animation:spin .8s linear infinite;}
+
+  /* detail (modal) */
+  #modal{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(8,10,18,0);-webkit-backdrop-filter:blur(0);backdrop-filter:blur(0);transition:background .45s ease,backdrop-filter .45s ease,-webkit-backdrop-filter .45s ease;}
+  #modal.show{display:flex;}
+  #modal.in{background:rgba(8,10,18,.55);-webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);transition-duration:var(--dur);}
+  .sheet{position:relative;width:100%;max-width:760px;max-height:88vh;overflow:auto;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35);opacity:0;transform:translateY(28px) scale(.94);transition:transform .45s ease,opacity .45s ease;}
+  #modal.in .sheet{opacity:1;transform:none;transition:transform var(--dur) cubic-bezier(.16,1,.3,1),opacity var(--dur) ease;}
+  .mx{position:sticky;top:0;float:right;margin:-8px -8px 0 8px;width:34px;height:34px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--text-2);font-size:20px;line-height:1;cursor:pointer;z-index:2;}
+  .mx:hover{color:var(--brand);border-color:var(--brand);}
+  .mt{font-size:20px;font-weight:700;margin:0 0 2px;}
+  .msub{margin:0 0 14px;font-size:13px;color:var(--text-2);}
+  .mk{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}
+  .mh{font-size:13px;font-weight:600;margin:14px 0 8px;}
 </style>
 </head>
 <body>
@@ -147,8 +201,16 @@
 </div>
 
 <div class="wrap">
-  <h1>Laporan Penjualan</h1>
-  <p class="sub">Pilih periode dan filter. Laporan dan Analisis produk memakai pilihan yang sama, hasilnya diperbarui otomatis.</p>
+  <div class="head">
+    <div>
+      <h1>Laporan Penjualan</h1>
+      <p class="sub">Pilih periode dan filter. Laporan dan Analisis produk memakai pilihan yang sama, hasilnya diperbarui otomatis. Klik grafik untuk melihat detail.</p>
+    </div>
+    <button class="themebtn" id="btnTema" type="button" aria-label="Ganti mode gelap/terang" title="Ganti mode gelap/terang">
+      <svg class="ic ic-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      <svg class="ic ic-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+    </button>
+  </div>
 
   <section class="filters">
     <div class="sec">Periode</div>
@@ -192,6 +254,13 @@
       </div>
     </div>
     <div id="hasilAna"><div class="empty">Membuka analisis...</div></div>
+  </div>
+</div>
+
+<div id="modal" aria-hidden="true">
+  <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <button type="button" class="mx" id="mClose" aria-label="Tutup">&times;</button>
+    <div id="mBody"></div>
   </div>
 </div>
 
@@ -336,19 +405,37 @@
   $('tabAna').addEventListener('click', () => pilihTab('ana'));
 
   /* =============== LAPORAN =============== */
+  const skeleton = () => `<div class="skel">
+    <div class="kpis">${'<div class="kpi"><div class="shim w40"></div><div class="shim w70 h24"></div><div class="shim w50"></div></div>'.repeat(5)}</div>
+    <div class="grid">${'<div class="panel"><div class="shim w40"></div><div class="shim block"></div></div>'.repeat(4)}</div>
+    <div class="loadmsg"><span class="spin"></span> Memuat data...</div></div>`;
+
   async function muatLaporan() {
     const p = params(); const k = JSON.stringify(p);
     if (!periodeValid(p)) { setStatus('Periode awal tidak boleh setelah periode akhir.', true); return; }
     if (k === kunciLap && DATA) { setStatus(''); if (DATA.jumlahBaris) gambarGrafik(); return; }
     const my = ++idLap; setStatus('Menghitung...');
     $('btnXls').disabled = $('btnPdf').disabled = true;
+    const box = $('hasil');
+    if (DATA) box.classList.add('busy'); else box.innerHTML = skeleton();
     try {
       const res = await api(Object.assign({ action: 'laporan' }, p));
       if (my !== idLap) return;
-      if (res.error) { DATA = null; kunciLap = ''; setStatus(res.error, true); $('hasil').innerHTML = '<div class="empty">' + esc(res.error) + '</div>'; return; }
-      DATA = res; kunciLap = k; setStatus(''); render();
+      box.classList.remove('busy');
+      if (res.error) { DATA = null; kunciLap = ''; setStatus(res.error, true); box.innerHTML = '<div class="empty">' + esc(res.error) + '</div>'; return; }
+      DATA = res; kunciLap = k; setStatus('');
+      box.classList.add('anim'); render();
+      clearTimeout(box._t); box._t = setTimeout(() => box.classList.remove('anim'), 2400);
       $('btnXls').disabled = $('btnPdf').disabled = !DATA.jumlahBaris;
-    } catch (e) { if (my === idLap && e.message !== 'unauthorized') setStatus('Gagal memuat laporan. Coba lagi.', true); }
+    } catch (e) {
+      if (my === idLap) {
+        box.classList.remove('busy');
+        if (e.message !== 'unauthorized') {
+          setStatus('Gagal memuat laporan. Coba lagi.', true);
+          if (!DATA) box.innerHTML = '<div class="empty">Gagal memuat laporan.</div>';
+        }
+      }
+    }
   }
 
   const nilaiMetrik = o => METRIK === 'nilai' ? o.nilai : o.unit;
@@ -422,8 +509,13 @@
 
   /* ---------- grafik ---------- */
   const PALET = ['#364fab','#e0903a','#2f9e8f','#c2527a','#7a6bd1','#6aa84f','#d4b43a','#4a90c9','#a0522d','#8a8f9c'];
+  const ANIM_MS = matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 1200;   // durasi animasi grafik
+  const animOpt = on => (on && ANIM_MS) ? { duration: ANIM_MS, easing: 'easeOutQuart' } : false;
   function destroyCharts() { Object.values(charts).forEach(c => c.destroy()); charts = {}; }
-  window.__onTheme = () => { if (tabAktif === 'lap' && DATA && DATA.jumlahBaris) gambarGrafik(); };
+  window.__onTheme = () => {
+    if (tabAktif === 'lap' && DATA && DATA.jumlahBaris) gambarGrafik(false);
+    if (modalChart) gambarModal(false);
+  };
 
   // angka di atas / di ujung batang
   const labelPlugin = {
@@ -441,7 +533,16 @@
     }
   };
 
-  function gambarGrafik() {
+  // klik + kursor pointer
+  function klik(fn) {
+    return {
+      onClick: (evt, els) => { if (els.length) fn(els[0].index); },
+      onHover: (evt, els) => { const t = evt.native && evt.native.target; if (t) t.style.cursor = els.length ? 'pointer' : 'default'; }
+    };
+  }
+
+  function gambarGrafik(anim) {
+    anim = anim !== false;
     destroyCharts();
     if (!$('cTahun')) return;
     const d = DATA, tx = cssv('--text-2'), gr = cssv('--grid'), brand = cssv('--brand');
@@ -449,14 +550,16 @@
     const fmtAx = v => METRIK === 'nilai' ? fmtRpPendek(v) : fmtN(v);
     const lbl = METRIK === 'nilai' ? 'Nilai paket' : 'Unit';
     const tip = v => ' ' + (METRIK === 'nilai' ? fmtRp(v) : fmtN(v) + ' unit');
-    const base = { responsive: true, maintainAspectRatio: false, animation: false };
+    const base = { responsive: true, maintainAspectRatio: false, animation: animOpt(anim) };
     const sumbuY = { ticks: { callback: fmtAx }, grid: { color: gr }, beginAtZero: true, grace: '14%' };
     const sumbuX = { grid: { display: false } };
+    const idxX = { mode: 'index', intersect: false };
+    const idxY = { mode: 'index', axis: 'y', intersect: false };
 
     // per tahun
     charts.tahun = new Chart($('cTahun'), { type: 'bar', plugins: [labelPlugin],
       data: { labels: d.perTahun.map(r => r.tahun), datasets: [{ label: lbl, data: d.perTahun.map(nilaiMetrik), backgroundColor: brand, borderRadius: 5, maxBarThickness: 90 }] },
-      options: Object.assign({}, base, { scales: { x: sumbuX, y: sumbuY },
+      options: Object.assign({}, base, klik(detailTahun), { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
         plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: c => tip(c.parsed.y) } } } }) });
 
     // per bulan
@@ -468,34 +571,163 @@
         charts.bulan = new Chart($('cBulan'), { type: 'line',
           data: { labels: BLN, datasets: tahun.map((y, i) => ({ label: y, data: by[y], borderColor: PALET[i % PALET.length], backgroundColor: PALET[i % PALET.length],
             borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .25, spanGaps: true })) },
-          options: Object.assign({}, base, { interaction: { mode: 'index', intersect: false }, scales: { x: sumbuX, y: sumbuY },
+          options: Object.assign({}, base, klik(detailBulan), { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
             plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, usePointStyle: true } },
               tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + (c.parsed.y == null ? '-' : (METRIK === 'nilai' ? fmtRp(c.parsed.y) : fmtN(c.parsed.y) + ' unit')) } } } }) });
       } else {
         const y = tahun[0];
         charts.bulan = new Chart($('cBulan'), { type: 'bar', plugins: [labelPlugin],
           data: { labels: BLN, datasets: [{ label: lbl, data: by[y].map(v => v || 0), backgroundColor: brand, borderRadius: 4 }] },
-          options: Object.assign({}, base, { scales: { x: sumbuX, y: sumbuY },
+          options: Object.assign({}, base, klik(detailBulan), { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
             plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: c => tip(c.parsed.y) } } } }) });
       }
     }
 
-    const hbar = (id, rows, key) => new Chart($(id), { type: 'bar', plugins: [labelPlugin],
+    const hbar = (id, rows, key, fn) => new Chart($(id), { type: 'bar', plugins: [labelPlugin],
       data: { labels: rows.map(r => r[key]), datasets: [{ label: lbl, data: rows.map(nilaiMetrik), backgroundColor: brand, borderRadius: 4 }] },
-      options: Object.assign({}, base, { indexAxis: 'y', plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: c => tip(c.parsed.x) } } },
+      options: Object.assign({}, base, klik(fn), { indexAxis: 'y', interaction: idxY,
+        plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: c => tip(c.parsed.x) } } },
         scales: { x: { ticks: { callback: fmtAx }, grid: { color: gr }, beginAtZero: true, grace: '18%' }, y: { grid: { display: false } } } }) });
-    charts.produk = hbar('cProduk', urut(d.perProduk).slice(0, 10), 'sku');
-    charts.wilayah = hbar('cWilayah', urut(d.perWilayah), 'wilayah');
-    charts.provinsi = hbar('cProvinsi', urut(d.perProvinsi).slice(0, 10), 'provinsi');
+    const rP = urut(d.perProduk).slice(0, 10), rW = urut(d.perWilayah), rV = urut(d.perProvinsi).slice(0, 10);
+    charts.produk = hbar('cProduk', rP, 'sku', i => detailProduk(rP[i], i + 1, d.perProduk.length));
+    charts.wilayah = hbar('cWilayah', rW, 'wilayah', i => detailWilayah(rW[i], i + 1, rW.length));
+    charts.provinsi = hbar('cProvinsi', rV, 'provinsi', i => detailProvinsi(rV[i], i + 1, d.perProvinsi.length));
 
-    let kat = urut(d.perKategori); const sisa = kat.slice(8).reduce((s, r) => s + nilaiMetrik(r), 0); kat = kat.slice(0, 8);
+    const katAll = urut(d.perKategori);
+    const kat = katAll.slice(0, 8), sisaList = katAll.slice(8);
+    const sisa = sisaList.reduce((s, r) => s + nilaiMetrik(r), 0);
     const kl = kat.map(r => r.kategori), kv = kat.map(nilaiMetrik); if (sisa > 0) { kl.push('Lainnya'); kv.push(sisa); }
     const tot = kv.reduce((a, b) => a + b, 0) || 1;
     charts.kategori = new Chart($('cKategori'), { type: 'doughnut',
       data: { labels: kl, datasets: [{ data: kv, backgroundColor: PALET, borderColor: cssv('--card'), borderWidth: 2 }] },
-      options: Object.assign({}, base, { cutout: '58%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } },
+      options: Object.assign({}, base, klik(i => i < kat.length ? detailKategori(kat[i], i + 1, katAll.length) : detailKategoriLain(sisaList)),
+        { cutout: '58%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } },
         tooltip: { callbacks: { label: c => ' ' + c.label + ': ' + fmtMetrik(c.parsed) + satuan() + ' (' + (c.parsed / tot * 100).toFixed(1) + '%)' } } } }) });
   }
+
+  /* ---------- detail (klik grafik) ---------- */
+  let modalSpec = null, modalChart = null;
+  const kpiBox = (l, v, n) => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v" style="font-size:20px;">${v}</div><div class="n">${n || ''}</div></div>`;
+  function kpiRingkas(o, note) {
+    const share = DATA.totalUnit ? o.unit / DATA.totalUnit * 100 : 0;
+    return kpiBox('Unit', fmtN(o.unit)) + kpiBox('Paket (NO AKS)', fmtN(o.transaksi)) +
+      kpiBox('Nilai paket', o.nilai ? fmtRpPendek(o.nilai) : '-', o.nilai ? esc(fmtRp(o.nilai)) : '') +
+      kpiBox('Porsi dari total unit', share.toFixed(1).replace('.', ',') + '%', note || '');
+  }
+  const rankNote = (rank, n) => rank ? 'Peringkat #' + rank + ' dari ' + n : '';
+  const itemDari = (x, label, on) => ({ l: label, unit: x.unit, nilai: x.nilai, paket: x.transaksi, on: on });
+  const jumlahO = list => list.reduce((a, x) => ({ unit: a.unit + x.unit, transaksi: a.transaksi + x.transaksi, nilai: a.nilai + (x.nilai || 0) }), { unit: 0, transaksi: 0, nilai: 0 });
+
+  function detailTahun(i) {
+    const d = DATA, r = d.perTahun[i], sebelum = d.perTahun[i - 1];
+    const items = d.perBulan.filter(b => b.periode.slice(0, 4) === String(r.tahun))
+      .map(b => ({ l: BULAN[+b.periode.slice(5) - 1], unit: b.unit, nilai: b.nilai, paket: b.transaksi }));
+    const tb = (d.tanpaBulanUnit || {})[r.tahun];
+    bukaDetail({ judul: 'Tahun ' + r.tahun,
+      sub: sebelum ? 'Perubahan ' + (METRIK === 'nilai' ? 'nilai paket' : 'unit') + ' dibanding ' + esc(sebelum.tahun) + ': ' + ubah(nilaiMetrik(r), nilaiMetrik(sebelum)) : 'Tahun pertama pada periode ini',
+      kpi: kpiRingkas(r), judulItems: 'Rincian per bulan', kolom: 'Bulan', horiz: false, items: items,
+      catatan: tb ? 'Termasuk ' + fmtN(tb) + ' unit tanpa data bulan (tidak tampil di rincian bulanan).' : '' });
+  }
+
+  function detailBulan(m) {
+    const d = DATA, mm = ('0' + (m + 1)).slice(-2);
+    const rs = d.perBulan.filter(b => b.periode.slice(5) === mm).sort((a, b) => a.periode < b.periode ? -1 : 1);
+    if (!rs.length) return;
+    bukaDetail({ judul: BULAN[m], sub: 'Bulan yang sama dibandingkan antar tahun pada periode terpilih',
+      kpi: kpiRingkas(jumlahO(rs)), judulItems: 'Per tahun', kolom: 'Tahun', horiz: false,
+      items: rs.map(b => ({ l: b.periode.slice(0, 4), unit: b.unit, nilai: b.nilai, paket: b.transaksi })) });
+  }
+
+  function detailProduk(r, rank, n) {
+    const sama = urut(DATA.perProduk.filter(x => x.kategori === r.kategori)).slice(0, 12);
+    bukaDetail({ judul: r.sku, sub: esc(r.kategori + (r.jenis ? ' | ' + r.jenis : '')), kpi: kpiRingkas(r, rankNote(rank, n)),
+      judulItems: 'Produk lain di kategori ' + r.kategori, kolom: 'Produk', horiz: true,
+      items: sama.length > 1 ? sama.map(x => itemDari(x, x.sku, x.sku === r.sku)) : [] });
+  }
+
+  function detailProvinsi(r, rank, n) {
+    const sama = urut(DATA.perProvinsi.filter(x => x.wilayah === r.wilayah)).slice(0, 12);
+    bukaDetail({ judul: r.provinsi, sub: 'Wilayah ' + esc(r.wilayah), kpi: kpiRingkas(r, rankNote(rank, n)),
+      judulItems: 'Provinsi lain di wilayah ' + r.wilayah, kolom: 'Provinsi', horiz: true,
+      items: sama.length > 1 ? sama.map(x => itemDari(x, x.provinsi, x.provinsi === r.provinsi)) : [] });
+  }
+
+  function detailWilayah(r, rank, n) {
+    const prov = urut(DATA.perProvinsi.filter(x => x.wilayah === r.wilayah)).slice(0, 12);
+    bukaDetail({ judul: r.wilayah, sub: 'Wilayah', kpi: kpiRingkas(r, rankNote(rank, n)),
+      judulItems: 'Provinsi di wilayah ini', kolom: 'Provinsi', horiz: true,
+      items: prov.map(x => itemDari(x, x.provinsi)) });
+  }
+
+  function detailKategori(r, rank, n) {
+    const prod = urut(DATA.perProduk.filter(x => x.kategori === r.kategori)).slice(0, 12);
+    bukaDetail({ judul: r.kategori, sub: 'Kategori', kpi: kpiRingkas(r, rankNote(rank, n)),
+      judulItems: 'Produk di kategori ini', kolom: 'Produk', horiz: true,
+      items: prod.map(x => itemDari(x, x.sku)) });
+  }
+
+  function detailKategoriLain(list) {
+    bukaDetail({ judul: 'Kategori lainnya', sub: fmtN(list.length) + ' kategori di luar 8 teratas', kpi: kpiRingkas(jumlahO(list)),
+      judulItems: 'Kategori di dalamnya', kolom: 'Kategori', horiz: true,
+      items: list.slice(0, 12).map(x => itemDari(x, x.kategori)) });
+  }
+
+  function tabelItems(s) {
+    const max = Math.max(1, ...s.items.map(nilaiMetrik));
+    return `<table><thead><tr><th>${esc(s.kolom || '')}</th><th class="r">Unit</th><th class="r">Paket</th><th class="r">Nilai paket</th><th style="width:90px"></th></tr></thead><tbody>` +
+      s.items.map(r => `<tr${r.on ? ' style="font-weight:700"' : ''}><td>${esc(r.l)}</td><td class="r">${fmtN(r.unit)}</td><td class="r">${fmtN(r.paket)}</td><td class="r">${r.nilai ? fmtRp(r.nilai) : '-'}</td><td>${barCell(nilaiMetrik(r), max)}</td></tr>`).join('') + '</tbody></table>';
+  }
+
+  function bukaDetail(s) {
+    modalSpec = s;
+    const n = s.horiz ? Math.min(12, s.items.length) : 0;
+    const tinggi = s.horiz ? Math.max(150, n * 30 + 30) : 240;
+    $('mBody').innerHTML = `
+      <h2 id="mTitle" class="mt">${esc(s.judul)}</h2>
+      <p class="msub">${s.sub || ''}</p>
+      <div class="kpis mk">${s.kpi}</div>
+      ${s.catatan ? `<div class="notice">${esc(s.catatan)}</div>` : ''}
+      ${s.items && s.items.length ? `<h3 class="mh">${esc(s.judulItems || '')}</h3>
+        <div class="cv" style="height:${tinggi}px"><canvas id="cModal"></canvas></div>
+        <div class="twrap" style="margin-top:12px;max-height:240px;">${tabelItems(s)}</div>` : ''}`;
+    const m = $('modal');
+    m.classList.add('show'); void m.offsetWidth; m.classList.add('in');
+    m.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
+    m.querySelector('.sheet').scrollTop = 0;
+    gambarModal(true);
+  }
+
+  function gambarModal(anim) {
+    if (modalChart) { modalChart.destroy(); modalChart = null; }
+    const s = modalSpec, c = $('cModal'); if (!s || !c) return;
+    const items = s.horiz ? s.items.slice(0, 12) : s.items;
+    const brand = cssv('--brand'), gr = cssv('--grid');
+    Chart.defaults.font.family = "'Inter',sans-serif"; Chart.defaults.color = cssv('--text-2');
+    const fmtAx = v => METRIK === 'nilai' ? fmtRpPendek(v) : fmtN(v);
+    const nilaiTip = v => ' ' + (METRIK === 'nilai' ? fmtRp(v) : fmtN(v) + ' unit');
+    const h = !!s.horiz;
+    modalChart = new Chart(c, { type: 'bar', plugins: [labelPlugin],
+      data: { labels: items.map(r => r.l), datasets: [{ label: METRIK === 'nilai' ? 'Nilai paket' : 'Unit', data: items.map(nilaiMetrik),
+        backgroundColor: items.map(r => (r.on === undefined || r.on) ? brand : brand + '66'), borderRadius: 4, maxBarThickness: 60 }] },
+      options: { responsive: true, maintainAspectRatio: false, animation: animOpt(anim), indexAxis: h ? 'y' : 'x',
+        plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: x => nilaiTip(h ? x.parsed.x : x.parsed.y) } } },
+        scales: h ? { x: { ticks: { callback: fmtAx }, grid: { color: gr }, beginAtZero: true, grace: '18%' }, y: { grid: { display: false } } }
+                  : { x: { grid: { display: false } }, y: { ticks: { callback: fmtAx }, grid: { color: gr }, beginAtZero: true, grace: '14%' } } } });
+  }
+
+  function tutupDetail() {
+    const m = $('modal'); if (!m.classList.contains('in')) return;
+    m.classList.remove('in'); m.setAttribute('aria-hidden', 'true');
+    setTimeout(() => {
+      if (m.classList.contains('in')) return;
+      m.classList.remove('show');
+      if (modalChart) { modalChart.destroy(); modalChart = null; }
+      modalSpec = null; document.body.style.overflow = '';
+    }, 460);
+  }
+  $('modal').addEventListener('click', e => { if (e.target === $('modal')) tutupDetail(); });   // klik di luar kartu
+  $('mClose').addEventListener('click', tutupDetail);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') tutupDetail(); });
 
   /* ---------- bantu export ---------- */
   const namaPeriodeFile = p => `${p.tahunAwal}-${String(p.bulanAwal).padStart(2, '0')}_${p.tahunAkhir}-${String(p.bulanAkhir).padStart(2, '0')}`;
@@ -684,13 +916,24 @@
     if (k === kunciAna && ANA) { setStatus(''); return; }
     const my = ++idAna; setStatus('Menghitung...');
     $('btnXlsAna').disabled = $('btnPdfAna').disabled = true;
+    const box = $('hasilAna');
+    if (ANA) box.classList.add('busy'); else box.innerHTML = skeleton();
     try {
       const r = await api(Object.assign({ action: 'laporanPortofolio' }, p));
       if (my !== idAna) return;
-      if (r.error) { ANA = null; kunciAna = ''; setStatus(r.error, true); $('hasilAna').innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
-      kunciAna = k; setStatus(''); hitungAnalisis(r);
+      box.classList.remove('busy');
+      if (r.error) { ANA = null; kunciAna = ''; setStatus(r.error, true); box.innerHTML = '<div class="empty">' + esc(r.error) + '</div>'; return; }
+      kunciAna = k; setStatus('');
+      box.classList.add('anim'); hitungAnalisis(r);
+      clearTimeout(box._t); box._t = setTimeout(() => box.classList.remove('anim'), 2400);
     } catch (e) {
-      if (my === idAna && e.message !== 'unauthorized') { setStatus('Gagal memuat analisis. Pastikan baris doGet laporanPortofolio sudah ditambahkan dan di-deploy.', true); }
+      if (my === idAna) {
+        box.classList.remove('busy');
+        if (e.message !== 'unauthorized') {
+          setStatus('Gagal memuat analisis. Pastikan baris doGet laporanPortofolio sudah ditambahkan dan di-deploy.', true);
+          if (!ANA) box.innerHTML = '<div class="empty">Gagal memuat analisis.</div>';
+        }
+      }
     }
   }
 
@@ -832,11 +1075,32 @@
     setStatus('File PDF terunduh.');
   }));
 
+  /* ---------- tombol tema: lingkaran meluas dari titik tombol (1 detik) ---------- */
+  function setelTema(t, x, y) {
+    try { localStorage.setItem('elitech_theme', t); } catch (e) {}
+    const terapkan = () => window.__setTheme(t);
+    const kurang = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!document.startViewTransition || kurang) { terapkan(); return; }
+    const r = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    const vt = document.startViewTransition(terapkan);
+    vt.ready.then(() => {
+      document.documentElement.animate(
+        { clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${r}px at ${x}px ${y}px)`] },
+        { duration: 1000, easing: 'ease-in-out', pseudoElement: '::view-transition-new(root)' });
+    });
+  }
+  $('btnTema').addEventListener('click', e => {
+    const rc = e.currentTarget.getBoundingClientRect();
+    const sekarang = document.documentElement.getAttribute('data-theme');
+    setelTema(sekarang === 'dark' ? 'light' : 'dark', rc.left + rc.width / 2, rc.top + rc.height / 2);
+  });
+
   window.addEventListener('message', e => {
     if (e.source !== window.parent) return;
     if (e.data && e.data.__elitech === 'theme') window.__setTheme(e.data.theme);
   });
 
+  $('hasil').innerHTML = skeleton();
   init();
 </script>
 </body>
