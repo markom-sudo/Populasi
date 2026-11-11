@@ -185,6 +185,14 @@
   .msub{margin:0 0 14px;font-size:13px;color:var(--text-2);}
   .mk{grid-template-columns:repeat(auto-fit,minmax(150px,1fr));}
   .mh{font-size:13px;font-weight:600;margin:14px 0 8px;}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 8px;}
+  .legend:empty{display:none;}
+  .lg{display:inline-flex;align-items:center;gap:7px;font:600 12px 'Inter',sans-serif;padding:5px 11px;border-radius:999px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer;}
+  .lg i{width:11px;height:11px;border-radius:50%;display:inline-block;}
+  .lg.off{opacity:.45;text-decoration:line-through;}
+  .sku2{font-size:11px;color:var(--text-3);}
+  .pk{min-width:200px;max-width:320px;white-space:normal;}
+  .mut{color:var(--text-3);font-size:11px;display:block;}
 </style>
 </head>
 <body>
@@ -471,8 +479,8 @@
       <div class="grid">
         <div class="panel"><h2>Penjualan per tahun</h2><div class="cv"><canvas id="cTahun"></canvas></div><div class="twrap" style="margin-top:12px;max-height:none;">${tabelTahun()}</div></div>
         <div class="panel"><h2>${multiTahun ? 'Per bulan, dibandingkan antar tahun' : 'Penjualan per bulan'}</h2>
-          <p class="hint">${multiTahun ? 'Satu garis untuk setiap tahun, sehingga bulan yang sama bisa dibandingkan langsung.' : 'Total penjualan di setiap bulan pada periode terpilih.'}</p>
-          ${d.perBulan.length ? '<div class="cv"><canvas id="cBulan"></canvas></div>' : '<div class="empty" style="padding:50px 0;">Tidak ada data bulan pada periode ini. Lihat grafik per tahun.</div>'}</div>
+          <p class="hint">${multiTahun ? 'Satu warna untuk setiap tahun (klik nama tahun untuk menyembunyikan/menampilkan). Klik titik atau batang untuk melihat produk dan paketnya.' : 'Total penjualan di setiap bulan. Klik batang untuk melihat produk dan paket pada bulan itu.'}</p>
+          ${d.perBulan.length ? '<div class="legend" id="lgBulan"></div><div class="cv"><canvas id="cBulan"></canvas></div>' : '<div class="empty" style="padding:50px 0;">Tidak ada data bulan pada periode ini. Lihat grafik per tahun.</div>'}</div>
         <div class="panel"><h2>10 produk terlaris</h2><div class="cv tall"><canvas id="cProduk"></canvas></div></div>
         <div class="panel"><h2>Penjualan per kategori</h2><div class="cv tall"><canvas id="cKategori"></canvas></div></div>
         <div class="panel"><h2>Penjualan per wilayah</h2><div class="cv"><canvas id="cWilayah"></canvas></div></div>
@@ -567,18 +575,29 @@
       const by = {};
       d.perBulan.forEach(r => { const y = r.periode.slice(0, 4), m = +r.periode.slice(5) - 1; (by[y] = by[y] || Array(12).fill(null))[m] = nilaiMetrik(r); });
       const tahun = Object.keys(by).sort();
+      WT = {}; tahun.forEach((y, i) => { WT[y] = PALET[i % PALET.length]; });
       if (tahun.length > 1) {
+        buatLegendBulan(tahun);
+        const klikBulan = {
+          onClick: (evt, els, chart) => {
+            const n = chart.getElementsAtEventForMode(evt.native, 'nearest', { intersect: false }, true);
+            const el = n[0] || els[0]; if (!el) return;
+            detailBulan(el.index, chart.data.datasets[el.datasetIndex].label);
+          },
+          onHover: (evt, els) => { const t = evt.native && evt.native.target; if (t) t.style.cursor = els.length ? 'pointer' : 'default'; }
+        };
         charts.bulan = new Chart($('cBulan'), { type: 'line',
-          data: { labels: BLN, datasets: tahun.map((y, i) => ({ label: y, data: by[y], borderColor: PALET[i % PALET.length], backgroundColor: PALET[i % PALET.length],
-            borderWidth: 2.5, pointRadius: 3, pointHoverRadius: 5, tension: .25, spanGaps: true })) },
-          options: Object.assign({}, base, klik(detailBulan), { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
-            plugins: { legend: { position: 'top', align: 'end', labels: { boxWidth: 12, usePointStyle: true } },
+          data: { labels: BLN, datasets: tahun.map((y, i) => ({ label: y, data: by[y], borderColor: WT[y], backgroundColor: WT[y],
+            borderWidth: 2.5, pointRadius: 4, pointHoverRadius: 7, tension: .25, spanGaps: true })) },
+          options: Object.assign({}, base, klikBulan, { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
+            plugins: { legend: { display: false },
               tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + (c.parsed.y == null ? '-' : (METRIK === 'nilai' ? fmtRp(c.parsed.y) : fmtN(c.parsed.y) + ' unit')) } } } }) });
       } else {
+        buatLegendBulan([]);
         const y = tahun[0];
         charts.bulan = new Chart($('cBulan'), { type: 'bar', plugins: [labelPlugin],
           data: { labels: BLN, datasets: [{ label: lbl, data: by[y].map(v => v || 0), backgroundColor: brand, borderRadius: 4 }] },
-          options: Object.assign({}, base, klik(detailBulan), { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
+          options: Object.assign({}, base, klik(i => detailBulan(i, y)), { interaction: idxX, scales: { x: sumbuX, y: sumbuY },
             plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: c => tip(c.parsed.y) } } } }) });
       }
     }
@@ -606,7 +625,16 @@
   }
 
   /* ---------- detail (klik grafik) ---------- */
-  let modalSpec = null, modalChart = null;
+  let modalSpec = null, modalChart = null, WT = {}, idDetail = 0;
+  function buatLegendBulan(tahun) {
+    const el = $('lgBulan'); if (!el) return;
+    el.innerHTML = tahun.map((y, i) => `<button type="button" class="lg" data-i="${i}"><i style="background:${WT[y]}"></i>${esc(y)}</button>`).join('');
+    el.onclick = e => {
+      const b = e.target.closest('.lg'); if (!b || !charts.bulan) return;
+      const i = +b.dataset.i, vis = charts.bulan.isDatasetVisible(i);
+      charts.bulan.setDatasetVisibility(i, !vis); charts.bulan.update(); b.classList.toggle('off', vis);
+    };
+  }
   const kpiBox = (l, v, n) => `<div class="kpi"><div class="l">${esc(l)}</div><div class="v" style="font-size:20px;">${v}</div><div class="n">${n || ''}</div></div>`;
   function kpiRingkas(o, note) {
     const share = DATA.totalUnit ? o.unit / DATA.totalUnit * 100 : 0;
@@ -618,6 +646,8 @@
   const itemDari = (x, label, on) => ({ l: label, unit: x.unit, nilai: x.nilai, paket: x.transaksi, on: on });
   const jumlahO = list => list.reduce((a, x) => ({ unit: a.unit + x.unit, transaksi: a.transaksi + x.transaksi, nilai: a.nilai + (x.nilai || 0) }), { unit: 0, transaksi: 0, nilai: 0 });
 
+  const grupAuto = () => DATA.perTahun.length > 1 ? 'tahun' : 'bulan';
+
   function detailTahun(i) {
     const d = DATA, r = d.perTahun[i], sebelum = d.perTahun[i - 1];
     const items = d.perBulan.filter(b => b.periode.slice(0, 4) === String(r.tahun))
@@ -625,76 +655,125 @@
     const tb = (d.tanpaBulanUnit || {})[r.tahun];
     bukaDetail({ judul: 'Tahun ' + r.tahun,
       sub: sebelum ? 'Perubahan ' + (METRIK === 'nilai' ? 'nilai paket' : 'unit') + ' dibanding ' + esc(sebelum.tahun) + ': ' + ubah(nilaiMetrik(r), nilaiMetrik(sebelum)) : 'Tahun pertama pada periode ini',
-      kpi: kpiRingkas(r), judulItems: 'Rincian per bulan', kolom: 'Bulan', horiz: false, items: items,
-      catatan: tb ? 'Termasuk ' + fmtN(tb) + ' unit tanpa data bulan (tidak tampil di rincian bulanan).' : '' });
+      kpi: kpiRingkas(r), judulItems: 'Penjualan per bulan', kolom: 'Bulan', horiz: false, items: items,
+      q: { dTahun: r.tahun }, kelompok: 'bulan', judulRincian: 'Produk terlaris di setiap bulan ' + r.tahun,
+      catatan: tb ? 'Termasuk ' + fmtN(tb) + ' unit tanpa data bulan (tampil sebagai "Tanpa bulan" di rincian).' : '' });
   }
 
-  function detailBulan(m) {
+  function detailBulan(m, tahun) {
     const d = DATA, mm = ('0' + (m + 1)).slice(-2);
     const rs = d.perBulan.filter(b => b.periode.slice(5) === mm).sort((a, b) => a.periode < b.periode ? -1 : 1);
     if (!rs.length) return;
-    bukaDetail({ judul: BULAN[m], sub: 'Bulan yang sama dibandingkan antar tahun pada periode terpilih',
-      kpi: kpiRingkas(jumlahO(rs)), judulItems: 'Per tahun', kolom: 'Tahun', horiz: false,
-      items: rs.map(b => ({ l: b.periode.slice(0, 4), unit: b.unit, nilai: b.nilai, paket: b.transaksi })) });
+    const pilih = tahun ? rs.find(b => b.periode.slice(0, 4) === String(tahun)) : null;
+    if (tahun && !pilih) return;
+    bukaDetail({ judul: BULAN[m] + (pilih ? ' ' + tahun : ''),
+      sub: pilih ? 'Produk dan paket yang terjual pada bulan ini' : 'Bulan yang sama dibandingkan antar tahun',
+      kpi: kpiRingkas(pilih || jumlahO(rs)),
+      judulItems: 'Bulan ' + BULAN[m] + ' dibandingkan antar tahun', kolom: 'Tahun', horiz: false,
+      items: rs.length > 1 ? rs.map(b => { const y = b.periode.slice(0, 4); return { l: y, unit: b.unit, nilai: b.nilai, paket: b.transaksi, c: WT[y], on: !pilih || y === String(tahun) }; }) : [],
+      q: { dBulan: m + 1, dTahun: tahun || '' }, kelompok: tahun ? '' : 'tahun', judulRincian: 'Produk terlaris per tahun pada bulan ' + BULAN[m] });
   }
 
   function detailProduk(r, rank, n) {
     const sama = urut(DATA.perProduk.filter(x => x.kategori === r.kategori)).slice(0, 12);
     bukaDetail({ judul: r.sku, sub: esc(r.kategori + (r.jenis ? ' | ' + r.jenis : '')), kpi: kpiRingkas(r, rankNote(rank, n)),
       judulItems: 'Produk lain di kategori ' + r.kategori, kolom: 'Produk', horiz: true,
-      items: sama.length > 1 ? sama.map(x => itemDari(x, x.sku, x.sku === r.sku)) : [] });
+      items: sama.length > 1 ? sama.map(x => itemDari(x, x.sku, x.sku === r.sku)) : [],
+      q: { dSku: r.sku }, kelompok: grupAuto(), judulRincian: 'Penjualan ' + r.sku + (grupAuto() === 'tahun' ? ' per tahun' : ' per bulan') });
   }
 
   function detailProvinsi(r, rank, n) {
     const sama = urut(DATA.perProvinsi.filter(x => x.wilayah === r.wilayah)).slice(0, 12);
     bukaDetail({ judul: r.provinsi, sub: 'Wilayah ' + esc(r.wilayah), kpi: kpiRingkas(r, rankNote(rank, n)),
       judulItems: 'Provinsi lain di wilayah ' + r.wilayah, kolom: 'Provinsi', horiz: true,
-      items: sama.length > 1 ? sama.map(x => itemDari(x, x.provinsi, x.provinsi === r.provinsi)) : [] });
+      items: sama.length > 1 ? sama.map(x => itemDari(x, x.provinsi, x.provinsi === r.provinsi)) : [],
+      q: { dWilayah: r.wilayah, dProvinsi: r.provinsi }, kelompok: grupAuto(), judulRincian: 'Penjualan di ' + r.provinsi + (grupAuto() === 'tahun' ? ' per tahun' : ' per bulan') });
   }
 
   function detailWilayah(r, rank, n) {
     const prov = urut(DATA.perProvinsi.filter(x => x.wilayah === r.wilayah)).slice(0, 12);
     bukaDetail({ judul: r.wilayah, sub: 'Wilayah', kpi: kpiRingkas(r, rankNote(rank, n)),
       judulItems: 'Provinsi di wilayah ini', kolom: 'Provinsi', horiz: true,
-      items: prov.map(x => itemDari(x, x.provinsi)) });
+      items: prov.map(x => itemDari(x, x.provinsi)),
+      q: { dWilayah: r.wilayah }, kelompok: grupAuto(), judulRincian: 'Penjualan wilayah ' + r.wilayah + (grupAuto() === 'tahun' ? ' per tahun' : ' per bulan') });
   }
 
   function detailKategori(r, rank, n) {
     const prod = urut(DATA.perProduk.filter(x => x.kategori === r.kategori)).slice(0, 12);
     bukaDetail({ judul: r.kategori, sub: 'Kategori', kpi: kpiRingkas(r, rankNote(rank, n)),
       judulItems: 'Produk di kategori ini', kolom: 'Produk', horiz: true,
-      items: prod.map(x => itemDari(x, x.sku)) });
+      items: prod.map(x => itemDari(x, x.sku)),
+      q: { dKategori: r.kategori }, kelompok: grupAuto(), judulRincian: 'Penjualan kategori ' + r.kategori + (grupAuto() === 'tahun' ? ' per tahun' : ' per bulan') });
   }
 
   function detailKategoriLain(list) {
+    const top = urut(DATA.perKategori).slice(0, 8).map(r => r.kategori).join('|');
     bukaDetail({ judul: 'Kategori lainnya', sub: fmtN(list.length) + ' kategori di luar 8 teratas', kpi: kpiRingkas(jumlahO(list)),
       judulItems: 'Kategori di dalamnya', kolom: 'Kategori', horiz: true,
-      items: list.slice(0, 12).map(x => itemDari(x, x.kategori)) });
+      items: list.slice(0, 12).map(x => itemDari(x, x.kategori)),
+      q: { xKategori: top }, kelompok: grupAuto(), judulRincian: 'Penjualan kategori lainnya' + (grupAuto() === 'tahun' ? ' per tahun' : ' per bulan') });
   }
 
-  function tabelItems(s) {
-    const max = Math.max(1, ...s.items.map(nilaiMetrik));
-    return `<table><thead><tr><th>${esc(s.kolom || '')}</th><th class="r">Unit</th><th class="r">Paket</th><th class="r">Nilai paket</th><th style="width:90px"></th></tr></thead><tbody>` +
-      s.items.map(r => `<tr${r.on ? ' style="font-weight:700"' : ''}><td>${esc(r.l)}</td><td class="r">${fmtN(r.unit)}</td><td class="r">${fmtN(r.paket)}</td><td class="r">${r.nilai ? fmtRp(r.nilai) : '-'}</td><td>${barCell(nilaiMetrik(r), max)}</td></tr>`).join('') + '</tbody></table>';
+  /* rincian produk + paket dari server (action laporanDetail) */
+  const namaGrup = (k, kel) => kel === 'bulan' ? (+k ? BULAN[+k - 1] : 'Tanpa bulan') : String(k);
+  const urutM = a => a.slice().sort((x, y) => METRIK === 'nilai' ? ((y.nilai || y.harga || 0) - (x.nilai || x.harga || 0)) : (y.unit - x.unit));
+
+  function htmlRincian(r, s) {
+    let h = '';
+    if (r.rincian && r.rincian.length) {
+      const mx = Math.max(1, ...r.rincian.map(nilaiMetrik));
+      h += `<h3 class="mh">${esc(s.judulRincian || 'Rincian')}</h3><div class="twrap"><table><thead><tr><th>${r.kelompok === 'bulan' ? 'Bulan' : 'Tahun'}</th><th class="r">Unit</th><th class="r">Paket</th><th class="r">Nilai paket</th><th>Produk terbanyak</th><th style="width:80px"></th></tr></thead><tbody>` +
+        r.rincian.map(g => `<tr><td>${esc(namaGrup(g.kunci, r.kelompok))}</td><td class="r">${fmtN(g.unit)}</td><td class="r">${fmtN(g.transaksi)}</td><td class="r">${g.nilai ? fmtRp(g.nilai) : '-'}</td><td class="pk">${g.top.map(t => esc(t.sku) + ' <span class="sku2">(' + fmtN(t.unit) + ')</span>').join(', ')}</td><td>${barCell(nilaiMetrik(g), mx)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    if (r.topProduk && r.topProduk.length > 1) {
+      const rows = urutM(r.topProduk), mx = Math.max(1, ...rows.map(nilaiMetrik));
+      h += `<h3 class="mh">Produk terlaris</h3><div class="twrap"><table><thead><tr><th>#</th><th>Produk</th><th>Kategori</th><th class="r">Unit</th><th class="r">Paket</th><th class="r">Nilai paket</th><th style="width:80px"></th></tr></thead><tbody>` +
+        rows.map((x, i) => `<tr><td>${i + 1}</td><td>${esc(x.sku)}</td><td>${esc(x.kategori)}</td><td class="r">${fmtN(x.unit)}</td><td class="r">${fmtN(x.transaksi)}</td><td class="r">${x.nilai ? fmtRp(x.nilai) : '-'}</td><td>${barCell(nilaiMetrik(x), mx)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    if (r.topPaket && r.topPaket.length) {
+      const rows = METRIK === 'nilai' ? urutM(r.topPaket) : r.topPaket;
+      h += `<h3 class="mh">Paket terbesar (NO AKS)</h3><p class="msub" style="margin:-4px 0 8px;">${fmtN(rows.length)} dari ${fmtN(r.jumlahPaket)} paket. Harga paket adalah harga per NO AKS, bukan harga satuan.</p><div class="twrap"><table><thead><tr><th>Paket</th><th>Pembeli</th><th>Waktu</th><th>Produk</th><th class="r">Unit</th><th class="r">Harga paket</th></tr></thead><tbody>` +
+        rows.map(x => `<tr><td class="pk">${esc(x.namaPaket || '-')}<span class="mut">${esc(x.aks)}</span></td><td class="pk">${esc(x.instansi)}<span class="mut">${esc(x.satuanKerja)}${x.provinsi ? ' | ' + esc(x.provinsi) : ''}</span></td><td>${x.bulan ? BLN[x.bulan - 1] + ' ' : ''}${esc(x.tahun)}</td><td class="pk">${x.sku.map(esc).join(', ')}</td><td class="r">${fmtN(x.unit)}</td><td class="r">${x.harga ? fmtRp(x.harga) : '-'}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    if (r.topInstansi && r.topInstansi.length > 1) {
+      const rows = urutM(r.topInstansi), mx = Math.max(1, ...rows.map(nilaiMetrik));
+      h += `<h3 class="mh">Instansi pembeli teratas</h3><div class="twrap"><table><thead><tr><th>Instansi</th><th class="r">Unit</th><th class="r">Nilai paket</th><th style="width:80px"></th></tr></thead><tbody>` +
+        rows.map(x => `<tr><td class="pk">${esc(x.instansi)}</td><td class="r">${fmtN(x.unit)}</td><td class="r">${x.nilai ? fmtRp(x.nilai) : '-'}</td><td>${barCell(nilaiMetrik(x), mx)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    return h || '<div class="notice">Tidak ada rincian untuk pilihan ini.</div>';
+  }
+
+  async function muatRincian(s) {
+    const my = ++idDetail, box = $('mRincian'); if (!box) return;
+    box.innerHTML = '<div class="loadmsg"><span class="spin"></span> Memuat produk dan paket...</div>';
+    try {
+      const r = await api(Object.assign({ action: 'laporanDetail' }, params(), s.q || {}, { kelompok: s.kelompok || '' }));
+      if (my !== idDetail || modalSpec !== s) return;
+      if (r.error) { box.innerHTML = '<div class="notice">' + esc(r.error === 'action tidak dikenal' ? 'Backend belum punya action laporanDetail. Tambahkan fungsi laporanDetail_ ke Laporan.gs, baris doGet-nya, lalu deploy versi baru.' : r.error) + '</div>'; return; }
+      box.innerHTML = htmlRincian(r, s);
+    } catch (e) {
+      if (my === idDetail && modalSpec === s) box.innerHTML = '<div class="notice">Gagal memuat rincian. Coba lagi.</div>';
+    }
   }
 
   function bukaDetail(s) {
     modalSpec = s;
+    const ada = s.items && s.items.length > 1;
     const n = s.horiz ? Math.min(12, s.items.length) : 0;
-    const tinggi = s.horiz ? Math.max(150, n * 30 + 30) : 240;
+    const tinggi = s.horiz ? Math.max(150, n * 30 + 30) : 220;
     $('mBody').innerHTML = `
       <h2 id="mTitle" class="mt">${esc(s.judul)}</h2>
       <p class="msub">${s.sub || ''}</p>
       <div class="kpis mk">${s.kpi}</div>
       ${s.catatan ? `<div class="notice">${esc(s.catatan)}</div>` : ''}
-      ${s.items && s.items.length ? `<h3 class="mh">${esc(s.judulItems || '')}</h3>
-        <div class="cv" style="height:${tinggi}px"><canvas id="cModal"></canvas></div>
-        <div class="twrap" style="margin-top:12px;max-height:240px;">${tabelItems(s)}</div>` : ''}`;
+      ${ada ? `<h3 class="mh">${esc(s.judulItems || '')}</h3><div class="cv" style="height:${tinggi}px"><canvas id="cModal"></canvas></div>` : ''}
+      <div id="mRincian"></div>`;
     const m = $('modal');
     m.classList.add('show'); void m.offsetWidth; m.classList.add('in');
     m.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
     m.querySelector('.sheet').scrollTop = 0;
     gambarModal(true);
+    muatRincian(s);
   }
 
   function gambarModal(anim) {
@@ -706,9 +785,10 @@
     const fmtAx = v => METRIK === 'nilai' ? fmtRpPendek(v) : fmtN(v);
     const nilaiTip = v => ' ' + (METRIK === 'nilai' ? fmtRp(v) : fmtN(v) + ' unit');
     const h = !!s.horiz;
+    const warna = r => { const w = r.c || brand; return (r.on === undefined || r.on) ? w : w + '55'; };
     modalChart = new Chart(c, { type: 'bar', plugins: [labelPlugin],
       data: { labels: items.map(r => r.l), datasets: [{ label: METRIK === 'nilai' ? 'Nilai paket' : 'Unit', data: items.map(nilaiMetrik),
-        backgroundColor: items.map(r => (r.on === undefined || r.on) ? brand : brand + '66'), borderRadius: 4, maxBarThickness: 60 }] },
+        backgroundColor: items.map(warna), borderRadius: 4, maxBarThickness: 60 }] },
       options: { responsive: true, maintainAspectRatio: false, animation: animOpt(anim), indexAxis: h ? 'y' : 'x',
         plugins: { legend: { display: false }, valLabel: { on: true }, tooltip: { callbacks: { label: x => nilaiTip(h ? x.parsed.x : x.parsed.y) } } },
         scales: h ? { x: { ticks: { callback: fmtAx }, grid: { color: gr }, beginAtZero: true, grace: '18%' }, y: { grid: { display: false } } }
