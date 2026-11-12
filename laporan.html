@@ -1183,5 +1183,324 @@
   $('hasil').innerHTML = skeleton();
   init();
 </script>
+  <style>
+  .h-rendah{background:#e3eefb;color:#185a9d;}.h-menengah{background:#ece8fa;color:#553aa8;}
+  .h-tinggi{background:#fbe6ef;color:#9c2656;}.h-na{background:var(--surface);color:var(--text-3);}
+  :root[data-theme="dark"] .h-rendah{background:#172a40;color:#8cbcf0;}
+  :root[data-theme="dark"] .h-menengah{background:#2a2447;color:#b9aaf2;}
+  :root[data-theme="dark"] .h-tinggi{background:#3d1d2c;color:#f0a0be;}
+  #viewProduk{animation:fade var(--dur) ease both;}
+  #tabelPrd tr[data-sku]:hover td{background:var(--brand-soft);}
+  .cv.sm{height:240px;}
+</style>
+ 
+<script>
+/* ===================== TAB PRODUK & HARGA ===================== */
+(function () {
+  let PRD = null, kunciPrd = '', idPrd = 0, kelasHarga = '', chartsPrd = {};
+  const URUT_TIER = ['RENDAH', 'MENENGAH', 'TINGGI', 'NA'];
+  const WARNA_TIER = { RENDAH: '#4a90c9', MENENGAH: '#7a6bd1', TINGGI: '#c2527a', NA: '#8a8f9c' };
+ 
+  /* --- pasang tab + tampilan --- */
+  const tabs = document.querySelector('.tabs');
+  tabs.insertAdjacentHTML('beforeend', '<button type="button" id="tabPrd">Produk &amp; harga</button>');
+  $('viewAnalisis').insertAdjacentHTML('afterend', `
+    <div id="viewProduk" style="display:none;">
+      <div class="toolbar">
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+          <input type="text" id="cariPrd" placeholder="Cari produk..." style="max-width:220px;height:36px;">
+          <select id="urutPrd" style="width:auto;height:36px;min-width:210px;">
+            <option value="unit">Urutkan: unit terbanyak</option>
+            <option value="nilai">Urutkan: estimasi nilai terbesar</option>
+            <option value="harga">Urutkan: harga satuan tertinggi</option>
+            <option value="naik">Urutkan: kenaikan terbesar</option>
+            <option value="turun">Urutkan: penurunan terdalam</option>
+          </select>
+        </div>
+        <div class="grp-r">
+          <button class="btn ghost sm" id="btnXlsPrd" disabled>Export Excel</button>
+          <button class="btn ghost sm" id="btnPdfPrd" disabled>Export PDF</button>
+        </div>
+      </div>
+      <div id="hasilPrd"><div class="empty">Membuka produk dan harga...</div></div>
+    </div>`);
+ 
+  /* --- ganti pilihTab & muatAktif milik script utama agar mengenal tab ke-3 --- */
+  window.pilihTab = function (t) {
+    tabAktif = t;
+    $('viewLaporan').style.display = t === 'lap' ? '' : 'none';
+    $('viewAnalisis').style.display = t === 'ana' ? '' : 'none';
+    $('viewProduk').style.display = t === 'prd' ? '' : 'none';
+    $('tabLap').classList.toggle('on', t === 'lap');
+    $('tabAna').classList.toggle('on', t === 'ana');
+    $('tabPrd').classList.toggle('on', t === 'prd');
+    if (META) { if (t === 'lap' && DATA && DATA.jumlahBaris && kunciLap === JSON.stringify(params())) gambarGrafik(); else muatAktif(); }
+  };
+  window.muatAktif = function () {
+    if (!META) return;
+    if (tabAktif === 'lap') muatLaporan(); else if (tabAktif === 'ana') muatAnalisis(); else muatProduk();
+  };
+  $('tabPrd').addEventListener('click', () => window.pilihTab('prd'));
+ 
+  const temaAsli = window.__onTheme;
+  window.__onTheme = () => { if (temaAsli) temaAsli(); if (tabAktif === 'prd' && PRD) gambarPrd(false); };
+ 
+  /* --- kelas harga --- */
+  const tierDari = (h, b) => !h ? 'NA' : h < b.rendah ? 'RENDAH' : h >= b.tinggi ? 'TINGGI' : 'MENENGAH';
+  const infoTier = b => ({
+    RENDAH:   { t: 'Harga rendah',    c: 'h-rendah',   rentang: '< ' + fmtRpPendek(b.rendah) },
+    MENENGAH: { t: 'Harga menengah',  c: 'h-menengah', rentang: fmtRpPendek(b.rendah) + ' sampai < ' + fmtRpPendek(b.tinggi) },
+    TINGGI:   { t: 'Harga tinggi',    c: 'h-tinggi',   rentang: '>= ' + fmtRpPendek(b.tinggi) },
+    NA:       { t: 'Belum ada harga', c: 'h-na',       rentang: 'belum bisa digolongkan' }
+  });
+ 
+  /* --- muat data --- */
+  async function muatProduk() {
+    const p = params(), k = JSON.stringify(p);
+    if (!periodeValid(p)) { setStatus('Periode awal tidak boleh setelah periode akhir.', true); return; }
+    if (k === kunciPrd && PRD) { setStatus(''); return; }
+    const my = ++idPrd; setStatus('Menghitung...');
+    $('btnXlsPrd').disabled = $('btnPdfPrd').disabled = true;
+    const box = $('hasilPrd');
+    if (PRD) box.classList.add('busy'); else box.innerHTML = skeleton();
+    try {
+      const r = await api(Object.assign({ action: 'laporanProduk' }, p));
+      if (my !== idPrd) return;
+      box.classList.remove('busy');
+      if (r.error) {
+        PRD = null; kunciPrd = '';
+        const msg = r.error === 'action tidak dikenal' ? 'Backend belum punya action laporanProduk. Tambahkan file LaporanProduk.gs, baris doGet-nya, lalu deploy versi baru.' : r.error;
+        setStatus(msg, true); box.innerHTML = '<div class="empty">' + esc(msg) + '</div>'; return;
+      }
+      kunciPrd = k; setStatus('');
+      box.classList.add('anim'); hitungPrd(r);
+      clearTimeout(box._t); box._t = setTimeout(() => box.classList.remove('anim'), 2400);
+    } catch (e) {
+      if (my === idPrd) {
+        box.classList.remove('busy');
+        if (e.message !== 'unauthorized') {
+          setStatus('Gagal memuat produk dan harga.', true);
+          if (!PRD) box.innerHTML = '<div class="empty">Gagal memuat produk dan harga.</div>';
+        }
+      }
+    }
+  }
+  window.muatProduk = muatProduk;
+ 
+  function hitungPrd(r) {
+    const b = r.batas, ti = infoTier(b), adaBanding = r.totalPrev > 0;
+    const mk = adaBanding ? r.totalRec / r.totalPrev : 1;
+    const semuaTahun = [...new Set(r.produk.flatMap(x => Object.keys(x.tahun).map(Number)))].sort((a, c) => a - c);
+    const tahunSpark = semuaTahun.slice(-7);
+    const rows = r.produk.map(x => {
+      const o = { sku: x.sku, kategori: x.kategori, jenis: x.jenis, tahun: x.tahun, mk: mk,
+        R: x.rec.unit, P: x.prev.unit, paketR: x.rec.paket, transaksi: x.rec.transaksi,
+        instansi: x.rec.instansi, provinsi: x.rec.provinsi, bulanAktif: x.rec.bulanAktif,
+        total: Object.values(x.tahun).reduce((s, t) => s + t, 0), peak: Math.max(0, ...Object.values(x.tahun)),
+        topShare: x.rec.unit ? x.rec.maks / x.rec.unit : 0,
+        harga: x.harga, sumber: x.hargaSumber, sampel: x.hargaSampel, tier: tierDari(x.harga, b),
+        topProv: x.topProv, topInst: x.topInst, th1: x.tahunPertama, th2: x.tahunTerakhir };
+      o.nilaiR = o.harga ? o.R * o.harga : 0; o.nilaiP = o.harga ? o.P * o.harga : 0;
+      if (adaBanding) { const k = klasifikasi(o); o.kelas = k[0]; o.alasan = k[1]; } else { o.kelas = ''; o.alasan = ''; }
+      return o;
+    }).filter(o => o.total > 0);
+    const agg = {}; URUT_TIER.forEach(t => { agg[t] = { n: 0, unit: 0, nilai: 0 }; });
+    rows.forEach(o => { const a = agg[o.tier]; a.n++; a.unit += o.R; a.nilai += o.nilaiR; });
+    PRD = { rows, mk, adaBanding, tahunSpark, periode: r.periode, pembanding: r.pembanding, totR: r.totalRec, totP: r.totalPrev, batas: b, ti, agg };
+    kelasHarga = '';
+    renderPrd();
+  }
+ 
+  /* --- tampilan --- */
+  function renderPrd() {
+    const A = PRD; if (!A) return;
+    if (!A.rows.length) { $('hasilPrd').innerHTML = '<div class="empty">Tidak ada produk pada filter ini.</div>'; return; }
+    const pers = Math.round((A.mk - 1) * 100);
+    const na = A.agg.NA;
+    const notice = `
+      <div class="notice"><b>Cara menggolongkan harga.</b> Harga satuan diambil dari kolom <b>HARGA_SATUAN</b> di sheet Master_Produk (manual) bila ada. Bila kosong, diestimasi dari median harga paket NO AKS yang hanya berisi satu produk (harga paket dibagi unit). Batas: <b>rendah</b> ${esc(A.ti.RENDAH.rentang)}, <b>menengah</b> ${esc(A.ti.MENENGAH.rentang)}, <b>tinggi</b> ${esc(A.ti.TINGGI.rentang)} (ubah lewat Config: BATAS_RENDAH dan BATAS_TINGGI). Estimasi nilai = unit x harga satuan, hanya sebagai indikasi.</div>
+      ${na.n ? `<div class="notice"><b>${fmtN(na.n)} dari ${fmtN(A.rows.length)} produk belum punya harga satuan</b> (belum ada paket tunggal di Harga_AKS dan belum diisi manual), jadi masuk "Belum ada harga". Isi kolom HARGA_SATUAN di Master_Produk supaya ikut tergolong.</div>` : ''}
+      ${A.adaBanding ? `<div class="notice">Perubahan dan penilaian performa membandingkan <b>${esc(labP(A.periode))}</b> dengan <b>${esc(labP(A.pembanding))}</b>. Total unit ${pers < 0 ? 'turun' : 'naik'} ${Math.abs(pers)}% (${fmtN(A.totP)} menjadi ${fmtN(A.totR)}), jadi penilaian memakai indeks relatif terhadap pasar. Klik baris produk untuk melihat performa rinci.</div>`
+        : `<div class="notice"><b>Belum ada data pembanding</b> (${esc(labP(A.pembanding))}). Penjualan dan kelas harga tetap tampil, tetapi perubahan dan penilaian performa belum bisa dibuat.</div>`}`;
+    const totNilai = Object.values(A.agg).reduce((s, a) => s + a.nilai, 0);
+    const kartu = '<div class="cls">' +
+      `<button class="kpi${kelasHarga ? '' : ' on'}" data-h=""><div class="l">Semua produk</div><div class="v">${fmtN(A.rows.length)}</div><div class="n">${fmtN(A.totR)} unit${totNilai ? ' | est. ' + fmtRpPendek(totNilai) : ''}</div></button>` +
+      URUT_TIER.filter(t => A.agg[t].n).map(t => {
+        const a = A.agg[t], sh = A.totR ? Math.round(a.unit / A.totR * 100) : 0;
+        return `<button class="kpi${kelasHarga === t ? ' on' : ''}" data-h="${t}"><div class="l"><span class="tag ${A.ti[t].c}">${A.ti[t].t}</span></div><div class="v">${fmtN(a.n)}</div><div class="n">${fmtN(a.unit)} unit (${sh}%)${a.nilai ? ' | est. ' + fmtRpPendek(a.nilai) : ''}</div></button>`;
+      }).join('') + '</div>';
+    $('hasilPrd').innerHTML = notice + kartu + `
+      <div class="grid">
+        <div class="panel"><h2>Unit per kelas harga</h2><p class="hint">Klik irisan untuk menyaring tabel.</p><div class="cv sm"><canvas id="cPrdUnit"></canvas></div></div>
+        <div class="panel"><h2>Estimasi nilai per kelas harga</h2><p class="hint">Hanya produk yang sudah punya harga satuan.</p><div class="cv sm"><canvas id="cPrdNilai"></canvas></div></div>
+        <div class="panel wide"><h2>Penjualan dan performa per produk</h2><div id="infoPrd" class="msub" style="margin:-4px 0 8px;"></div><div class="twrap" style="max-height:640px;" id="tabelPrd"></div></div>
+      </div>`;
+    renderTabelPrd(); gambarPrd(true);
+    $('btnXlsPrd').disabled = $('btnPdfPrd').disabled = false;
+  }
+ 
+  const ch = r => r.P > 0 ? (r.R - r.P) / r.P : null;
+  const UR = {
+    unit:  (a, b) => b.R - a.R || b.P - a.P,
+    nilai: (a, b) => b.nilaiR - a.nilaiR || b.R - a.R,
+    harga: (a, b) => b.harga - a.harga || b.R - a.R,
+    naik:  (a, b) => (ch(b) === null ? -1e9 : ch(b)) - (ch(a) === null ? -1e9 : ch(a)) || b.R - a.R,
+    turun: (a, b) => (ch(a) === null ? 1e9 : ch(a)) - (ch(b) === null ? 1e9 : ch(b)) || b.R - a.R
+  };
+  function daftarPrd() {
+    const A = PRD, q = ($('cariPrd').value || '').trim().toLowerCase();
+    return A.rows.filter(r => (!kelasHarga || r.tier === kelasHarga) &&
+      (!q || r.sku.toLowerCase().includes(q) || r.kategori.toLowerCase().includes(q) || (r.jenis || '').toLowerCase().includes(q)))
+      .sort(UR[$('urutPrd').value] || UR.unit);
+  }
+  function renderTabelPrd() {
+    const A = PRD; if (!A || !$('tabelPrd')) return;
+    const rs = daftarPrd();
+    $('infoPrd').textContent = 'Menampilkan ' + fmtN(rs.length) + ' dari ' + fmtN(A.rows.length) + ' produk' + (kelasHarga ? ' (' + A.ti[kelasHarga].t + ')' : '') + '. Klik baris untuk rincian.';
+    if (!rs.length) { $('tabelPrd').innerHTML = '<div class="empty" style="padding:40px 0;">Tidak ada produk yang cocok.</div>'; return; }
+    $('tabelPrd').innerHTML = `<table><thead><tr><th>#</th><th>Produk (SKU)</th><th>Kategori</th><th>Kelas harga</th><th class="r">Harga satuan</th><th class="r">Unit</th><th class="r">Paket</th><th class="r">Provinsi</th><th class="r">Perubahan</th><th class="r">Estimasi nilai</th><th>Tren tahunan</th><th>Performa</th></tr></thead><tbody>` +
+      rs.map((r, i) => {
+        const perf = A.adaBanding && r.kelas ? `<span class="tag ${KELAS[r.kelas].c}">${KELAS[r.kelas].t}</span>` : '-';
+        const hargaTxt = r.harga ? fmtRp(r.harga) + '<span class="mut">' + (r.sumber === 'MANUAL' ? 'manual' : 'estimasi, ' + fmtN(r.sampel) + ' paket') + '</span>' : '-';
+        return `<tr data-sku="${esc(r.sku)}" style="cursor:pointer;"><td>${i + 1}</td><td class="pk">${esc(r.sku)}<span class="mut">${esc(r.jenis || '')}</span></td><td>${esc(r.kategori)}</td><td><span class="tag ${A.ti[r.tier].c}">${A.ti[r.tier].t}</span></td><td class="r">${hargaTxt}</td><td class="r">${fmtN(r.R)}</td><td class="r">${fmtN(r.transaksi)}</td><td class="r">${fmtN(r.provinsi)}</td><td class="r">${A.adaBanding ? (r.P > 0 ? ubah(r.R, r.P) : (r.R > 0 ? 'baru' : '-')) : '-'}</td><td class="r">${r.nilaiR ? fmtRp(r.nilaiR) : '-'}</td><td>${sparkline(r, A.tahunSpark)}</td><td>${perf}</td></tr>`;
+      }).join('') + '</tbody></table>';
+  }
+ 
+  function setKelasHarga(t) {
+    kelasHarga = kelasHarga === t ? '' : t;
+    [...$('hasilPrd').querySelectorAll('button[data-h]')].forEach(b => b.classList.toggle('on', b.dataset.h === kelasHarga));
+    renderTabelPrd();
+  }
+ 
+  function gambarPrd(anim) {
+    anim = anim !== false;
+    Object.values(chartsPrd).forEach(c => c.destroy()); chartsPrd = {};
+    const A = PRD; if (!A || !$('cPrdUnit')) return;
+    Chart.defaults.font.family = "'Inter',sans-serif"; Chart.defaults.color = cssv('--text-2');
+    const gr = cssv('--grid'), base = { responsive: true, maintainAspectRatio: false, animation: animOpt(anim) };
+    const tUnit = URUT_TIER.filter(t => A.agg[t].n && A.agg[t].unit);
+    const tot = tUnit.reduce((s, t) => s + A.agg[t].unit, 0) || 1;
+    chartsPrd.unit = new Chart($('cPrdUnit'), { type: 'doughnut',
+      data: { labels: tUnit.map(t => A.ti[t].t), datasets: [{ data: tUnit.map(t => A.agg[t].unit), backgroundColor: tUnit.map(t => WARNA_TIER[t]), borderColor: cssv('--card'), borderWidth: 2 }] },
+      options: Object.assign({}, base, klik(i => setKelasHarga(tUnit[i])), { cutout: '58%',
+        plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } },
+          tooltip: { callbacks: { label: c => ' ' + c.label + ': ' + fmtN(c.parsed) + ' unit (' + (c.parsed / tot * 100).toFixed(1).replace('.', ',') + '%)' } } } }) });
+    const t3 = ['RENDAH', 'MENENGAH', 'TINGGI'].filter(t => A.agg[t].nilai > 0);
+    if (!t3.length) { $('cPrdNilai').parentNode.innerHTML = '<div class="empty" style="padding:60px 0;">Belum ada produk dengan harga satuan.</div>'; return; }
+    chartsPrd.nilai = new Chart($('cPrdNilai'), { type: 'bar',
+      data: { labels: t3.map(t => A.ti[t].t), datasets: [{ label: 'Estimasi nilai', data: t3.map(t => A.agg[t].nilai), backgroundColor: t3.map(t => WARNA_TIER[t]), borderRadius: 5, maxBarThickness: 90 }] },
+      options: Object.assign({}, base, klik(i => setKelasHarga(t3[i])), {
+        scales: { x: { grid: { display: false } }, y: { ticks: { callback: v => fmtRpPendek(v) }, grid: { color: gr }, beginAtZero: true, grace: '14%' } },
+        plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ' ' + fmtRp(c.parsed.y) } } } }) });
+  }
+ 
+  /* --- performa rinci (klik baris) --- */
+  function detailPrd(sku) {
+    const A = PRD, r = A && A.rows.find(x => x.sku === sku); if (!r) return;
+    const ti = A.ti[r.tier];
+    const th = Object.keys(r.tahun).map(Number).sort((a, c) => a - c);
+    const items = th.map(t => ({ l: String(t), unit: r.tahun[t], nilai: r.harga ? r.tahun[t] * r.harga : 0, on: t >= A.periode.tahunAwal && t <= A.periode.tahunAkhir }));
+    const idxTxt = r.P > 0 ? r.idx.toFixed(2).replace('.', ',') : (r.R > 0 ? 'baru' : '-');
+    const sumberTxt = r.harga ? (r.sumber === 'MANUAL' ? 'Diisi manual' : 'Estimasi dari ' + fmtN(r.sampel) + ' paket tunggal') : 'Isi HARGA_SATUAN di Master_Produk';
+    const kpi =
+      kpiBox('Unit periode ini', fmtN(r.R), A.adaBanding ? 'Pembanding: ' + fmtN(r.P) + ' unit' : '') +
+      kpiBox('Perubahan', A.adaBanding ? (r.P > 0 ? ubah(r.R, r.P) : (r.R > 0 ? 'Baru' : '-')) : '-', A.adaBanding ? 'Pasar: ' + (A.mk >= 1 ? '+' : '') + Math.round((A.mk - 1) * 100) + '%' : '') +
+      kpiBox('Indeks relatif', idxTxt, 'Di atas 1 = porsi naik') +
+      kpiBox('Harga satuan', r.harga ? fmtRpPendek(r.harga) : '-', esc(sumberTxt)) +
+      kpiBox('Estimasi nilai', r.nilaiR ? fmtRpPendek(r.nilaiR) : '-', r.nilaiR ? esc(fmtRp(r.nilaiR)) : '') +
+      kpiBox('Paket (NO AKS)', fmtN(r.transaksi), r.transaksi ? 'Rata-rata ' + (r.R / r.transaksi).toFixed(1).replace('.', ',') + ' unit per paket' : '') +
+      kpiBox('Sebaran', fmtN(r.provinsi) + ' provinsi', fmtN(r.instansi) + ' instansi') +
+      kpiBox('Aktif', r.bulanAktif ? fmtN(r.bulanAktif) + ' bulan' : '-', r.th1 ? 'Terjual ' + r.th1 + (r.th2 !== r.th1 ? ' - ' + r.th2 : '') : '');
+    const sub = `<span class="tag ${ti.c}">${esc(ti.t)}</span> ` + (A.adaBanding && r.kelas ? `<span class="tag ${KELAS[r.kelas].c}">${esc(KELAS[r.kelas].t)}</span> ` : '') + esc(r.kategori + (r.jenis ? ' | ' + r.jenis : ''));
+    bukaDetail({ judul: r.sku, sub: sub, kpi: kpi,
+      judulItems: 'Unit per tahun (batang pekat = tahun dalam periode terpilih)', kolom: 'Tahun', horiz: false,
+      items: items.length > 1 ? items : [],
+      q: { dSku: r.sku }, kelompok: grupAuto(), judulRincian: 'Penjualan ' + r.sku + (grupAuto() === 'tahun' ? ' per tahun' : ' per bulan') });
+    let h = '';
+    if (A.adaBanding && r.kelas) h += `<div class="notice"><b>${esc(KELAS[r.kelas].t)}.</b> ${esc(r.alasan)}. ${esc(KELAS[r.kelas].d)}</div>`;
+    if (r.topShare >= 0.5 && r.R > 0) h += `<div class="notice">Konsentrasi tinggi: satu paket menyumbang ${Math.round(r.topShare * 100)}% dari unit periode ini.</div>`;
+    if (r.topProv && r.topProv.length) {
+      h += `<h3 class="mh">Provinsi terbesar (periode ini)</h3><div class="twrap"><table><thead><tr><th>Provinsi</th><th class="r">Unit</th><th class="r">Porsi</th><th style="width:80px"></th></tr></thead><tbody>` +
+        r.topProv.map(x => `<tr><td>${esc(x.n)}</td><td class="r">${fmtN(x.unit)}</td><td class="r">${r.R ? (x.unit / r.R * 100).toFixed(1).replace('.', ',') : 0}%</td><td>${barCell(x.unit, r.topProv[0].unit)}</td></tr>`).join('') + '</tbody></table></div>';
+    }
+    const box = $('mRincian'); if (box && h) box.insertAdjacentHTML('beforebegin', h);
+  }
+ 
+  /* --- event --- */
+  $('hasilPrd').addEventListener('click', e => {
+    const b = e.target.closest('button[data-h]');
+    if (b) { if (b.dataset.h === '') { kelasHarga = ''; [...$('hasilPrd').querySelectorAll('button[data-h]')].forEach(x => x.classList.toggle('on', x.dataset.h === '')); renderTabelPrd(); } else setKelasHarga(b.dataset.h); return; }
+    const tr = e.target.closest('tr[data-sku]'); if (tr) detailPrd(tr.dataset.sku);
+  });
+  $('cariPrd').addEventListener('input', () => { if (PRD) renderTabelPrd(); });
+  $('urutPrd').addEventListener('change', () => { if (PRD) renderTabelPrd(); });
+ 
+  /* --- export Excel --- */
+  $('btnXlsPrd').addEventListener('click', () => ketuk($('btnXlsPrd'), async () => {
+    if (!PRD) return;
+    const A = PRD, wb = new ExcelJS.Workbook(); wb.creator = 'Elitech';
+    const sub = 'Periode ' + labP(A.periode) + (A.adaBanding ? '   |   Pembanding ' + labP(A.pembanding) : '') + '   |   ' + filterLabel();
+    const rows = A.rows.slice().sort(UR.unit);
+    const ringkas = URUT_TIER.filter(t => A.agg[t].n).map(t => ({ t: t, n: A.agg[t].n, unit: A.agg[t].unit, nilai: A.agg[t].nilai }));
+    xlTabel(wb, 'Kelas Harga', 'Penggolongan produk menurut harga satuan', sub, [
+      { h: 'Kelas harga', w: 22, fill: r => ({ RENDAH: 'FFE3EEFB', MENENGAH: 'FFECE8FA', TINGGI: 'FFFBE6EF', NA: 'FFF5F6F9' })[r.t], v: r => A.ti[r.t].t },
+      { h: 'Rentang harga satuan', w: 34, v: r => A.ti[r.t].rentang },
+      { h: 'Jumlah produk', w: 16, fmt: FMT_N, sum: true, v: r => r.n },
+      { h: 'Unit periode ini', w: 18, fmt: FMT_N, sum: true, v: r => r.unit },
+      { h: '% dari total unit', w: 16, fmt: '0.0%', v: r => A.totR ? r.unit / A.totR : 0 },
+      { h: 'Estimasi nilai (Rp)', w: 24, fmt: FMT_RP, sum: true, v: r => r.nilai || null }
+    ], ringkas, { total: true });
+    const kolom = [
+      { h: 'Produk (SKU)', w: 28, v: r => r.sku }, { h: 'Jenis produk', w: 34, v: r => r.jenis }, { h: 'Kategori', w: 22, v: r => r.kategori },
+      { h: 'Kelas harga', w: 18, v: r => A.ti[r.tier].t },
+      { h: 'Harga satuan (Rp)', w: 20, fmt: FMT_RP, v: r => r.harga || null },
+      { h: 'Sumber harga', w: 14, v: r => r.sumber === 'MANUAL' ? 'Manual' : (r.sumber ? 'Estimasi (' + r.sampel + ' paket)' : '') },
+      { h: 'Unit pembanding\n' + labP(A.pembanding), w: 20, fmt: FMT_N, sum: true, v: r => r.P },
+      { h: 'Unit periode ini\n' + labP(A.periode), w: 20, fmt: FMT_N, sum: true, v: r => r.R },
+      { h: 'Perubahan', w: 13, fmt: FMT_P, v: r => r.P > 0 ? (r.R - r.P) / r.P : null },
+      { h: 'Indeks relatif', w: 13, fmt: FMT_I, v: r => A.adaBanding && r.P > 0 ? r.idx : null },
+      { h: 'Paket (NO AKS)', w: 15, fmt: FMT_N, v: r => r.transaksi },
+      { h: 'Instansi', w: 12, fmt: FMT_N, v: r => r.instansi }, { h: 'Provinsi', w: 12, fmt: FMT_N, v: r => r.provinsi },
+      { h: 'Bulan aktif', w: 12, fmt: FMT_N, v: r => r.bulanAktif },
+      { h: 'Estimasi nilai (Rp)', w: 22, fmt: FMT_RP, sum: true, v: r => r.nilaiR || null },
+      { h: 'Performa', w: 30, fill: r => r.kelas ? KELAS[r.kelas].xl : null, v: r => r.kelas ? KELAS[r.kelas].t : '' },
+      { h: 'Alasan', w: 60, v: r => r.alasan },
+      { h: 'Total semua tahun', w: 17, fmt: FMT_N, v: r => r.total }
+    ].concat(A.tahunSpark.map(t => ({ h: String(t), w: 10, fmt: FMT_N, v: r => r.tahun[t] || 0 })));
+    const ws = xlTabel(wb, 'Produk & Harga', 'Penjualan, harga, dan performa per produk', sub, kolom, rows, { total: true });
+    ws.getRow(4).height = 40;
+    await xlSimpan(wb, 'Produk_Harga_' + namaPeriodeFile(A.periode) + '.xlsx');
+    setStatus('File Excel terunduh.');
+  }));
+ 
+  /* --- export PDF --- */
+  $('btnPdfPrd').addEventListener('click', () => ketuk($('btnPdfPrd'), async () => {
+    if (!PRD) return;
+    const A = PRD, { jsPDF } = window.jspdf;
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+    const H = doc.internal.pageSize.getHeight(), M = 36;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.text('Produk dan Kelas Harga Elitech', M, 44);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10); doc.setTextColor(90);
+    doc.text('Periode: ' + labP(A.periode) + (A.adaBanding ? '   |   Pembanding: ' + labP(A.pembanding) : '') + '   |   ' + filterLabel(), M, 62);
+    doc.text('Batas: rendah ' + A.ti.RENDAH.rentang + ', menengah ' + A.ti.MENENGAH.rentang + ', tinggi ' + A.ti.TINGGI.rentang + '   |   Dibuat: ' + new Date().toLocaleString('id-ID'), M, 76);
+    doc.setTextColor(0);
+    const ringkas = URUT_TIER.filter(t => A.agg[t].n).map(t => [A.ti[t].t, fmtN(A.agg[t].n), fmtN(A.agg[t].unit), A.agg[t].nilai ? fmtRp(A.agg[t].nilai) : '-']);
+    doc.autoTable({ startY: 90, margin: { left: M, right: M }, head: [['Kelas harga', 'Produk', 'Unit', 'Estimasi nilai']], body: ringkas,
+      styles: { fontSize: 9, cellPadding: 4 }, headStyles: { fillColor: [54, 79, 171] }, columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } } });
+    const rows = A.rows.slice().sort(UR.unit);
+    doc.autoTable({ startY: doc.lastAutoTable.finalY + 18, margin: { left: M, right: M, bottom: 34 },
+      head: [['Produk', 'Kategori', 'Kelas harga', 'Harga satuan', 'Unit pemb.', 'Unit periode', 'Perubahan', 'Est. nilai', 'Performa']],
+      body: rows.map(r => [r.sku, r.kategori, A.ti[r.tier].t, r.harga ? fmtRp(r.harga) : '-', fmtN(r.P), fmtN(r.R),
+        A.adaBanding && r.P > 0 ? (((r.R - r.P) / r.P * 100) >= 0 ? '+' : '') + ((r.R - r.P) / r.P * 100).toFixed(1).replace('.', ',') + '%' : '-',
+        r.nilaiR ? fmtRp(r.nilaiR) : '-', r.kelas ? KELAS[r.kelas].t : '-']),
+      styles: { fontSize: 7.5, cellPadding: 3 }, headStyles: { fillColor: [54, 79, 171] },
+      columnStyles: { 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' }, 7: { halign: 'right' } } });
+    const n = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= n; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(140); doc.text('Elitech - internal   |   halaman ' + i + ' / ' + n, M, H - 18); }
+    doc.save('Produk_Harga_' + namaPeriodeFile(A.periode) + '.pdf');
+    setStatus('File PDF terunduh.');
+  }));
+})();
+</script>
 </body>
 </html>
