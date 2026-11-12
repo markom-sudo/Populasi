@@ -1517,11 +1517,21 @@
   .mut2{color:var(--text-3);font-size:11px;display:block;}
 </style>
 
+<style>
+  #viewAks{animation:fade var(--dur) ease both;}
+  .tabs{max-width:100%;overflow-x:auto;}
+  .tabs button{white-space:nowrap;}
+  #tabelAks tr[data-aks]:hover td{background:var(--brand-soft);}
+  #matAks th.hl,#matAks td.hl{background:var(--brand-soft);}
+  .mut2{color:var(--text-3);font-size:11px;display:block;}
+</style>
+ 
 <script>
 /* ===================== TAB AKSESORI ===================== */
 (function () {
   let AKS = null, kunciAks = '', idAks = 0, aksPilih = '', chartsAks = {};
-
+  const NAMA_KOSONG = '(Belum dikelompokkan)';
+ 
   /* --- pasang tab + tampilan --- */
   $('tabPrd').insertAdjacentHTML('afterend', '<button type="button" id="tabAks">Aksesori</button>');
   $('viewProduk').insertAdjacentHTML('afterend', `
@@ -1535,7 +1545,7 @@
       </div>
       <div id="hasilAks"><div class="empty">Membuka kebutuhan aksesori...</div></div>
     </div>`);
-
+ 
   /* --- sambungkan ke pilihTab / muatAktif yang sudah ada --- */
   const pilihTabLama = window.pilihTab, muatAktifLama = window.muatAktif;
   window.pilihTab = function (t) {
@@ -1547,7 +1557,7 @@
   $('tabAks').addEventListener('click', () => window.pilihTab('aks'));
   const temaLama = window.__onTheme;
   window.__onTheme = () => { if (temaLama) temaLama(); if (tabAktif === 'aks' && AKS) gambarAks(false); };
-
+ 
   /* --- muat data --- */
   async function muatAksesori() {
     const p = params(), k = JSON.stringify(p);
@@ -1580,7 +1590,7 @@
     }
   }
   window.muatAksesori = muatAksesori;
-
+ 
   function hitungAks(r) {
     const tahunList = Object.keys(r.perTahunTotal).map(Number).sort((a, b) => a - b);
     AKS = { r, adaBanding: r.totalPrev > 0, tahunList, periode: r.periode, pembanding: r.pembanding, aks: r.aksesori,
@@ -1588,12 +1598,12 @@
     aksPilih = '';
     renderAks();
   }
-
+ 
   const perBln = (u, A) => A.bln ? (u / A.bln) : 0;
   const fmtBln = v => v >= 100 ? fmtN(Math.round(v)) : v.toFixed(1).replace('.', ',');
   const pctTxt = v => (v * 100).toFixed(1).replace('.', ',') + '%';
   const sparkA = (a, A) => sparkline({ tahun: a.tahun }, A.tahunList.slice(-7));
-
+ 
   function renderAks() {
     const A = AKS; if (!A) return;
     const r = A.r;
@@ -1615,13 +1625,14 @@
         <div class="panel"><h2>Unit aksesori: periode ini dan pembanding</h2><p class="hint">Klik batang untuk menyaring tabel produk.</p><div class="cv tall"><canvas id="cAksUnit"></canvas></div></div>
         <div class="panel"><h2>Porsi unit produk yang memakai aksesori</h2><p class="hint">Persen dari seluruh unit pada tahun itu (6 aksesori terbesar). Tahun terakhir bisa belum penuh.</p><div class="cv tall"><canvas id="cAksTren"></canvas></div></div>
         <div class="panel wide"><h2>Ringkasan per aksesori</h2><div class="twrap" id="tabelAks">${tabelAks()}</div></div>
+        <div class="panel wide"><h2>Kelompok aksesori</h2><p class="hint">Aksesori yang sama dengan nama produk berbeda digabung (mis. trolley ECG-1200G dan trolley Promist 3 jadi satu kelompok). Klik kartu aksesori di atas untuk melihat satu aksesori saja. Nama kelompok diisi di sheet Grup_Aksesori.</p><div id="grupAks"></div></div>
         <div class="panel wide"><h2>Produk dan aksesori yang menyertainya</h2><div id="infoMat" class="msub" style="margin:-4px 0 8px;"></div><div class="twrap" style="max-height:560px;" id="matAksWrap"></div></div>
         <div class="panel wide"><h2>Kombinasi paket yang paling sering</h2><div class="twrap">${tabelBundel()}</div></div>
       </div>`;
     renderMat(); gambarAks(true);
     $('btnXlsAks').disabled = $('btnPdfAks').disabled = false;
   }
-
+ 
   function tabelAks() {
     const A = AKS, mx = Math.max(1, ...A.aks.map(a => a.unit));
     return `<table><thead><tr><th>Aksesori</th><th class="r">Unit periode ini</th><th class="r">Pembanding</th><th class="r">Perubahan</th><th class="r">Rata-rata per bulan</th><th class="r">Paket</th><th class="r">% dari unit produk</th><th class="r">Produk</th><th>Tren tahunan</th><th>Produk utama</th><th style="width:80px"></th></tr></thead><tbody>` +
@@ -1633,7 +1644,26 @@
     return `<table><thead><tr><th>#</th><th>Nama produk di laporan</th><th class="r">Unit</th><th style="width:100px"></th></tr></thead><tbody>` +
       rows.map((x, i) => `<tr><td>${i + 1}</td><td class="pk">${esc(x.n)}</td><td class="r">${fmtN(x.unit)}</td><td>${barCell(x.unit, mx)}</td></tr>`).join('') + '</tbody></table>';
   }
-
+ 
+  /* --- kelompok aksesori (dari sheet Grup_Aksesori) --- */
+  function tabelGrup(a) {
+    const A = AKS, gs = a.grup || [];
+    if (!gs.length) return '';
+    const mx = Math.max(1, ...gs.map(g => g.unit));
+    return `<div class="twrap"><table><thead><tr><th>Kelompok</th><th class="r">Unit periode ini</th><th class="r">Pembanding</th><th class="r">Perubahan</th><th class="r">Dipakai di</th><th>Tren tahunan</th><th>Produk pemakai</th><th style="width:80px"></th></tr></thead><tbody>` +
+      gs.map(g => `<tr><td class="pk">${g.nama ? '<b>' + esc(g.nama) + '</b>' : '<span class="mut">' + NAMA_KOSONG + '</span>'}${g.varian.length ? '<span class="mut">' + g.varian.slice(0, 3).map(v => esc(v.n)).join(' | ') + '</span>' : ''}</td><td class="r">${fmtN(g.unit)}</td><td class="r">${fmtN(g.unitPrev)}</td><td class="r">${A.adaBanding ? ubah(g.unit, g.unitPrev) : '-'}</td><td class="r">${fmtN(g.jumlahProduk)} produk</td><td>${sparkline({ tahun: g.tahun }, A.tahunList.slice(-7))}</td><td class="pk">${g.produk.slice(0, 6).map(t => esc(t.n) + ' <span class="sku2">(' + fmtN(t.unit) + ')</span>').join(', ')}${g.produk.length > 6 ? ' ...' : ''}</td><td>${barCell(g.unit, mx)}</td></tr>`).join('') + '</tbody></table></div>';
+  }
+  function htmlGrupSemua() {
+    const A = AKS; if (!A) return '';
+    const bernama = a => (a.grup || []).some(g => g.nama);
+    const daftar = aksPilih ? A.aks.filter(a => a.nama === aksPilih) : A.aks.filter(bernama);
+    if (!daftar.length) return '<div class="empty" style="padding:30px 0;">Belum ada kelompok. Jalankan menu "14. Siapkan Sheet Master_Aksesori" (sekaligus menyiapkan Grup_Aksesori), isi kolom GRUP di sheet Grup_Aksesori, lalu muat ulang halaman ini.</div>';
+    return daftar.map(a => {
+      const gs = a.grup || [], kosong = gs.filter(g => !g.nama).reduce((s, g) => s + g.unit, 0);
+      return `<h3 class="mh">${esc(a.nama)} <span class="mut" style="display:inline;">${gs.filter(g => g.nama).length} kelompok${kosong ? ', ' + fmtN(kosong) + ' unit belum dikelompokkan' : ''}</span></h3>` + tabelGrup(a);
+    }).join('');
+  }
+ 
   /* --- matriks produk x aksesori --- */
   const kolomAks = () => AKS.aks.filter(a => a.unit > 0);
   function daftarMat() {
@@ -1643,6 +1673,7 @@
   }
   function renderMat() {
     const A = AKS; if (!A || !$('matAksWrap')) return;
+    if ($('grupAks')) $('grupAks').innerHTML = htmlGrupSemua();
     const kol = kolomAks(), rs = daftarMat();
     $('infoMat').textContent = 'Menampilkan ' + fmtN(rs.length) + ' dari ' + fmtN(A.produk.length) + ' produk yang pernah dijual bersama aksesori' + (aksPilih ? ' (urut menurut ' + aksPilih + ')' : '') + '. Angka kecil = persen unit produk itu yang memakai aksesori.';
     if (!rs.length) { $('matAksWrap').innerHTML = '<div class="empty" style="padding:40px 0;">Tidak ada produk yang cocok.</div>'; return; }
@@ -1654,7 +1685,7 @@
     [...$('hasilAks').querySelectorAll('button[data-a]')].forEach(b => b.classList.toggle('on', b.dataset.a === aksPilih));
     renderMat();
   }
-
+ 
   /* --- grafik --- */
   function gambarAks(anim) {
     anim = anim !== false;
@@ -1676,7 +1707,7 @@
         plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } }, tooltip: { callbacks: { label: c => ' ' + c.dataset.label + ': ' + (c.parsed.y == null ? '-' : c.parsed.y.toFixed(1).replace('.', ',') + '%') } } },
         scales: { x: { grid: { display: false } }, y: { ticks: { callback: v => v + '%' }, grid: { color: gr }, beginAtZero: true, grace: '10%' } } }) });
   }
-
+ 
   /* --- rincian satu aksesori --- */
   function detailAks(nama) {
     const A = AKS, a = A.aks.find(x => x.nama === nama); if (!a) return;
@@ -1693,6 +1724,7 @@
     let h = `<h2 id="mTitle" class="mt">${esc(a.nama)}</h2><p class="msub">Kebutuhan aksesori pada ${esc(labP(A.periode))}</p><div class="kpis mk">${kpi}</div>`;
     h += tbl('Unit per tahun', '<th>Tahun</th><th class="r">Unit</th><th class="r">% dari unit tahun itu</th><th style="width:100px"></th>',
       A.tahunList.map(t => `<tr><td>${t}</td><td class="r">${fmtN(a.tahun[t] || 0)}</td><td class="r">${A.tot[t] ? pctTxt((a.tahun[t] || 0) / A.tot[t]) : '-'}</td><td>${barCell(a.tahun[t] || 0, mxT)}</td></tr>`).join(''));
+    if (a.grup && a.grup.some(g => g.nama)) h += '<h3 class="mh">Kelompok ' + esc(a.nama) + '</h3>' + tabelGrup(a);
     if (a.topProduk.length) h += tbl('Produk yang paling sering memakai ' + a.nama, '<th>Produk</th><th class="r">Unit aksesori</th><th class="r">Unit produk</th><th class="r">% unit produk yang memakai</th>',
       a.topProduk.map(t => { const p = prodMap[t.n]; return `<tr><td>${esc(t.n)}</td><td class="r">${fmtN(t.unit)}</td><td class="r">${p ? fmtN(p.unit) : '-'}</td><td class="r">${p && p.unit ? pctTxt(t.unit / p.unit) : '-'}</td></tr>`; }).join(''));
     if (a.topProv.length) h += tbl('Provinsi terbesar', '<th>Provinsi</th><th class="r">Unit</th><th class="r">Porsi</th>',
@@ -1706,7 +1738,7 @@
     m.setAttribute('aria-hidden', 'false'); document.body.style.overflow = 'hidden';
     m.querySelector('.sheet').scrollTop = 0;
   }
-
+ 
   /* --- event --- */
   $('hasilAks').addEventListener('click', e => {
     const b = e.target.closest('button[data-a]');
@@ -1714,7 +1746,7 @@
     const tr = e.target.closest('tr[data-aks]'); if (tr) detailAks(tr.dataset.aks);
   });
   $('cariAks').addEventListener('input', () => { if (AKS && AKS.aks.length) renderMat(); });
-
+ 
   /* --- export Excel --- */
   $('btnXlsAks').addEventListener('click', () => ketuk($('btnXlsAks'), async () => {
     if (!AKS) return;
@@ -1731,6 +1763,16 @@
       { h: 'Jumlah produk', w: 14, fmt: FMT_N, v: a => a.jumlahProduk },
       { h: 'Produk utama', w: 50, v: a => a.topProduk.slice(0, 3).map(t => t.n + ' (' + fmtN(t.unit) + ')').join(', ') }
     ].concat(A.tahunList.map(t => ({ h: 'Unit ' + t, w: 11, fmt: FMT_N, v: a => a.tahun[t] || 0 }))), A.aks, { total: false });
+    const barisGrup = []; A.aks.forEach(a => (a.grup || []).forEach(g => barisGrup.push({ a: a.nama, g: g })));
+    if (barisGrup.length) xlTabel(wb, 'Kelompok', 'Kelompok aksesori', sub, [
+      { h: 'Aksesori', w: 18, v: x => x.a },
+      { h: 'Kelompok', w: 34, v: x => x.g.nama || '(belum dikelompokkan)' },
+      { h: 'Unit periode ini', w: 18, fmt: FMT_N, v: x => x.g.unit },
+      { h: 'Unit pembanding', w: 18, fmt: FMT_N, v: x => x.g.unitPrev },
+      { h: 'Perubahan', w: 13, fmt: FMT_P, v: x => x.g.unitPrev > 0 ? (x.g.unit - x.g.unitPrev) / x.g.unitPrev : null },
+      { h: 'Jumlah produk', w: 14, fmt: FMT_N, v: x => x.g.jumlahProduk },
+      { h: 'Produk pemakai', w: 70, v: x => x.g.produk.map(t => t.n + ' (' + fmtN(t.unit) + ')').join(', ') }
+    ].concat(A.tahunList.map(t => ({ h: 'Unit ' + t, w: 11, fmt: FMT_N, v: x => x.g.tahun[t] || 0 }))), barisGrup, { total: false });
     const kol = kolomAks();
     const kMat = [{ h: 'Produk (SKU)', w: 28, v: p => p.sku }, { h: 'Kategori', w: 22, v: p => p.kategori }, { h: 'Unit produk', w: 14, fmt: FMT_N, sum: true, v: p => p.unit }];
     kol.forEach(a => { kMat.push({ h: a.nama + ' (unit)', w: 16, fmt: FMT_N, sum: true, v: p => p.aks[a.nama] || 0 }); kMat.push({ h: a.nama + ' (% unit produk)', w: 18, fmt: '0.0%', v: p => p.unit ? (p.aks[a.nama] || 0) / p.unit : null }); });
@@ -1740,7 +1782,7 @@
     await xlSimpan(wb, 'Kebutuhan_Aksesori_' + namaPeriodeFile(A.periode) + '.xlsx');
     setStatus('File Excel terunduh.');
   }));
-
+ 
   /* --- export PDF --- */
   $('btnPdfAks').addEventListener('click', () => ketuk($('btnPdfAks'), async () => {
     if (!AKS) return;
@@ -1756,6 +1798,10 @@
       body: A.aks.map(a => [a.nama, fmtN(a.unit), fmtN(a.unitPrev), A.adaBanding && a.unitPrev > 0 ? (((a.unit - a.unitPrev) / a.unitPrev * 100) >= 0 ? '+' : '') + ((a.unit - a.unitPrev) / a.unitPrev * 100).toFixed(1).replace('.', ',') + '%' : '-',
         A.bln ? fmtBln(a.unit / A.bln) : '-', fmtN(a.paket), A.totR ? pctTxt(a.unit / A.totR) : '-', a.topProduk.slice(0, 3).map(t => t.n + ' (' + fmtN(t.unit) + ')').join(', ')]),
       styles: { fontSize: 8.5, cellPadding: 4 }, headStyles: { fillColor: [54, 79, 171] }, columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' } } });
+    const barisGrup = []; A.aks.forEach(a => (a.grup || []).forEach(g => { if (g.nama) barisGrup.push([a.nama, g.nama, fmtN(g.unit), fmtN(g.unitPrev), A.adaBanding && g.unitPrev > 0 ? (((g.unit - g.unitPrev) / g.unitPrev * 100) >= 0 ? '+' : '') + ((g.unit - g.unitPrev) / g.unitPrev * 100).toFixed(1).replace('.', ',') + '%' : '-', g.produk.slice(0, 6).map(t => t.n + ' (' + fmtN(t.unit) + ')').join(', ')]); }));
+    if (barisGrup.length) doc.autoTable({ startY: doc.lastAutoTable.finalY + 20, margin: { left: M, right: M, bottom: 34 },
+      head: [['Aksesori', 'Kelompok', 'Unit periode ini', 'Pembanding', 'Perubahan', 'Produk pemakai']], body: barisGrup,
+      styles: { fontSize: 8, cellPadding: 3.5 }, headStyles: { fillColor: [54, 79, 171] }, columnStyles: { 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } } });
     const kol = kolomAks().slice(0, 7);
     doc.autoTable({ startY: doc.lastAutoTable.finalY + 20, margin: { left: M, right: M, bottom: 34 },
       head: [['Produk', 'Unit produk'].concat(kol.map(a => a.nama))],
