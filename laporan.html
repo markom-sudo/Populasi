@@ -232,6 +232,7 @@
     <div class="sec" style="margin-top:16px;">Saring data (opsional)</div>
     <div class="frow">
       <div class="fld"><label for="selKategori">Kategori</label><select id="selKategori"><option value="">Semua kategori</option></select></div>
+      <div class="fld"><label for="selProduk">Produk (SKU)</label><select id="selProduk"><option value="">Semua produk</option></select></div>
       <div class="fld"><label for="selWilayah">Wilayah</label><select id="selWilayah"><option value="">Semua wilayah</option></select></div>
       <div class="fld"><label for="selProvinsi">Provinsi</label><select id="selProvinsi" disabled><option value="">Semua provinsi</option></select></div>
       <div class="fld"><button class="btn ghost" id="btnReset" type="button" style="width:100%;">Reset filter</button></div>
@@ -325,6 +326,7 @@
   const filterLabel = () => {
     const f = [];
     if ($('selKategori').value) f.push('Kategori: ' + $('selKategori').value);
+    if ($('selProduk').value) f.push('Produk: ' + $('selProduk').value);
     if ($('selWilayah').value) f.push('Wilayah: ' + $('selWilayah').value);
     if ($('selProvinsi').value) f.push('Provinsi: ' + $('selProvinsi').value);
     return f.length ? f.join(', ') : 'Semua kategori dan wilayah';
@@ -334,11 +336,19 @@
   const params = () => ({
     tahunAwal: $('tahunAwal').value, bulanAwal: $('bulanAwal').value,
     tahunAkhir: $('tahunAkhir').value, bulanAkhir: $('bulanAkhir').value,
-    kategori: $('selKategori').value, wilayah: $('selWilayah').value, provinsi: $('selProvinsi').value
+    kategori: $('selKategori').value, wilayah: $('selWilayah').value, provinsi: $('selProvinsi').value,
+    sku: $('selProduk').value
   });
   const periodeValid = p => +p.tahunAwal * 12 + +p.bulanAwal <= +p.tahunAkhir * 12 + +p.bulanAkhir;
-
-  async function init() {
+  
+  function isiProduk(simpan) {
+    const k = $('selKategori').value;
+    const list = (META.produk || []).filter(p => !k || p.kategori === k);
+    opts($('selProduk'), [['', 'Semua produk']].concat(list.map(p => [p.sku, p.sku])), '');
+    if (simpan && list.some(p => p.sku === simpan)) $('selProduk').value = simpan;
+  }
+  
+    async function init() {
     setStatus('');
     try { META = await api({ action: 'laporanMeta' }); if (META.error) throw new Error(META.error); }
     catch (e) {
@@ -350,6 +360,7 @@
     opts($('tahunAwal'), th); opts($('tahunAkhir'), th);
     opts($('selKategori'), [['', 'Semua kategori']].concat(META.kategori.map(k => [k, k])), '');
     opts($('selWilayah'), [['', 'Semua wilayah']].concat(META.wilayah.map(w => [w, w])), '');
+    isiProduk();
     buatPreset();
     setPeriode(1, ACUAN(), 12, ACUAN(), true);
     muatAktif();
@@ -381,7 +392,8 @@
     [...$('presets').querySelectorAll('.chip')].forEach(b => b.classList.toggle('on', PRESETS[b.dataset.i][1].join() === cur));
   }
   ['bulanAwal', 'tahunAwal', 'bulanAkhir', 'tahunAkhir'].forEach(id => $(id).addEventListener('change', () => { tandaiPreset(); updateRingkas(); jadwal(); }));
-  $('selKategori').addEventListener('change', () => { updateRingkas(); jadwal(); });
+  $('selKategori').addEventListener('change', () => { isiProduk($('selProduk').value); updateRingkas(); jadwal(); });
+  $('selProduk').addEventListener('change', () => { updateRingkas(); jadwal(); });
   $('selProvinsi').addEventListener('change', () => { updateRingkas(); jadwal(); });
   $('selWilayah').addEventListener('change', () => {
     const w = $('selWilayah').value, sp = $('selProvinsi');
@@ -390,7 +402,8 @@
     updateRingkas(); jadwal();
   });
   $('btnReset').addEventListener('click', () => {
-    $('selKategori').value = ''; $('selWilayah').value = ''; opts($('selProvinsi'), [['', 'Semua provinsi']], ''); $('selProvinsi').disabled = true;
+    $('selKategori').value = ''; isiProduk(); $('selWilayah').value = '';
+    opts($('selProvinsi'), [['', 'Semua provinsi']], ''); $('selProvinsi').disabled = true;
     setPeriode(1, ACUAN(), 12, ACUAN());
   });
   function jadwal() { clearTimeout(timer); timer = setTimeout(muatAktif, 350); }
@@ -1181,6 +1194,8 @@
   });
 
   $('hasil').innerHTML = skeleton();
+
+  
   init();
 </script>
   <style>
